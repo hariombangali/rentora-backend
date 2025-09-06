@@ -1,9 +1,8 @@
 const express = require('express');
 const multer = require('multer');
-const { postProperty, getAllProperties, getPropertyById, getMyProperties } = require('../controllers/PropertyController');
+const { postProperty, getAllProperties, getPropertyById, getMyProperties, getMapLocations, getFeaturedProperties, getLatestProperties } = require('../controllers/PropertyController');
 const { protect } = require('../middlewares/authMiddleware');
 const roleMiddleware = require('../middlewares/roleMiddleware');
-
 
 
 const router = express.Router();
@@ -23,23 +22,18 @@ const upload = multer({ storage });
 
 // Upload fields config
 const propertyUpload = upload.fields([
-  { name: 'propertyImages', maxCount: 8 },
-  { name: 'kycDocument', maxCount: 1 },
-  { name: 'ownershipProof', maxCount: 1 },
+  { name: 'images', maxCount: 8 },
+  { name: 'ownerIdFile', maxCount: 1 },
+  { name: 'ownershipProofFile', maxCount: 1 },
 ]);
  
 // Route
-router.post(    
-  '/',
-  protect,                
-  roleMiddleware('user', 'owner'),
-  propertyUpload,
-  postProperty
-);
-
-
+router.post('/',protect,roleMiddleware('user', 'owner'),propertyUpload,postProperty);
+router.get('/map-locations', getMapLocations);
 router.get('/', getAllProperties);
 router.get('/my-properties', protect, roleMiddleware('owner'), getMyProperties);
+router.get('/featured', getFeaturedProperties);
+router.get('/latest', getLatestProperties);
 router.get("/:id", getPropertyById); 
 
 

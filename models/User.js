@@ -9,7 +9,7 @@ const userSchema = new mongoose.Schema(
     role: {
       type: String,
       enum: ["guest", "user", "owner", "admin"],
-      default: "user",
+      default: "user", 
     },
     ownerKYC: {
       ownerName: String,
@@ -17,13 +17,12 @@ const userSchema = new mongoose.Schema(
       ownerPhone: String,
       ownerIdType: String,
       ownerIdNumber: String,
-      ownerIdFile: String,       // filename or URL
-    },
-    ownershipProof: {
+      ownerIdFile: String,
       ownershipProofType: String,
       ownershipProofDocNumber: String,
-      ownershipProofFile: String,  // filename or URL
+      ownershipProofFile: String,
     },
+
     ownerVerified: { type: Boolean, default: false },  // default false till admin verifies
     ownerRejected: { type: Boolean, default: false },
     ownerRejectionReason: { type: String, default: "" },

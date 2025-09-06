@@ -1,5 +1,5 @@
 const express = require('express');
-const { getAllPendingProperties, approveProperty, getAllProperties, getDashboardStats, rejectProperty, getOwnerVerification, getOwnersList, approveOwnerVerification, rejectOwnerVerification, deleteProperty, getUsers, getUserById, updateUser, deleteUser } = require('../controllers/adminController');
+const { getAllPendingProperties, approveProperty, getAllProperties, getDashboardStats, rejectProperty, getOwnerVerification, getOwnersList, approveOwnerVerification, rejectOwnerVerification, deleteProperty, getUsers, getUserById, updateUser, deleteUser, featureProperty } = require('../controllers/adminController');
 const { protect } = require('../middlewares/authMiddleware');
 const roleMiddleware = require('../middlewares/roleMiddleware');
 const router = express.Router();
@@ -31,6 +31,8 @@ router.get("/users/:id", protect, roleMiddleware("admin"), getUserById);
 router.put("/users/:id", protect, roleMiddleware("admin"), updateUser);
 
 router.delete("/users/:id", protect, roleMiddleware("admin"), deleteUser);
+
+router.put('/properties/:id/feature', protect, roleMiddleware('admin'), featureProperty);
 
 
 module.exports = router;

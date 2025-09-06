@@ -1,71 +1,67 @@
-
-const mongoose = require('mongoose'); 
+const mongoose = require('mongoose');
 
 const propertySchema = new mongoose.Schema({
-  user: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: "User",
-    required: true,
+  user: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+
+  // Basic Info
+  title: { type: String, required: true, trim: true },
+  description: { type: String, required: true, trim: true },
+
+  // Location
+location: {
+    city: { type: String, required: true },
+    locality: { type: String, required: true },
+    address: { type: String, required:true },
+    pincode: { type: String, required: true },
+    // GeoJSON Point
+    point: {
+        type: {
+            type: String,
+            enum: ['Point'],
+            default: 'Point'
+        },
+        coordinates: {
+            type: [Number], // [longitude, latitude]
+        }
+    }
   },
 
-  title: { type: String, required: true },
-  description: { type: String, required: true },
+  // Availability & Tenant Preferences
+  availableFor: { type: String, enum: ["Boys", "Girls", "Any"], default: "Any" },
+  preferredTenants: { type: String, enum: ["Students", "Working Professionals", "Any"], default: "Any" },
+  availableFrom: { type: Date, required: true },
+  
+  // Room & Property Specifics
+  occupancyType: { type: String, enum: ["Single", "Shared", "Both"], default: "Single" },
+  sharingCount: { type: String, default: "2" }, // Can be "2", "3", "4", "5+"
+  bedrooms: { type: Number, default: 1 },
+  attachedBathroom: { type: String, enum: ["Yes", "No"], default: "Yes" },
+  attachedBalcony: { type: String, enum: ["Yes", "No"], default: "Yes" },
+  furnishing: { type: String, enum: ["Unfurnished", "Semi-furnished", "Fully furnished"], default: "Unfurnished" },
+  ageOfProperty: { type: String }, // e.g., "0 - 1 Year"
+  totalFloors: { type: Number },
+  propertyOnFloor: { type: Number },
+  
+  // Pricing & Contract
   price: { type: Number, required: true },
   deposit: { type: Number, default: 0 },
+  maintenance: { type: Number, default: 0 },
+  maintenanceFreq: { type: String, enum: ["Monthly", "Quarterly", "Yearly"], default: "Yearly" },
+  earlyLeavingCharges: { type: Number, default: 0 },
+  minContractDuration: { type: String, default: "1 Month" },
+  noticePeriod: { type: String, default: "1 Month" },
 
-  type: {
-    type: String,
-    enum: ["1BHK", "2BHK", "Studio", "PG"],
-    required: true,
-  },
+  // Amenities & Images
+  commonAreaFacilities: { type: [String], default: [] },
+  pgAmenities: { type: [String], default: [] },
+  images: { type: [String], default: [] }, // Stores filenames
 
-  furnishing: {
-    type: String,
-    enum: ["Furnished", "Semi-Furnished", "Unfurnished"],
-    required: true,
-  },
-
-  location: {
-    city: { type: String, required: true },
-    locality: { type: String},
-    address: { type: String, required: true },
-    pincode: { type: String, required: true },
-  },
-
-  tenants: {
-    type: String,
-    enum: ["Any", "Students", "Working Professionals", "Family"],
-    default: "Any",
-  },
-  availableFrom: {
-  type: Date,   // ya String bhi hota hai, lekin Date recommended
-  default: null,
-},
-
-  amenities: { type: [String], default: [] },
-  images: { type: [String], default: [] },
-
-  // ✅ Owner KYC details (nested)
-  // ownerKYC: {
-  //   ownerName: { type: String, required: true },
-  //   ownerEmail: { type: String, required: true },
-  //   ownerPhone: { type: String, required: true },
-  //   ownerIdType: { type: String, required: true },
-  //   ownerIdNumber: { type: String, required: true },
-  //   ownerIdFile: { type: String, required: true },
-  // },
-
-  // ✅ Ownership proof details (nested)
-  // ownershipProof: {
-  //   ownershipProofType: { type: String, required: true },
-  //   ownershipProofDocNumber: { type: String },
-  //   ownershipProofFile: { type: String, required: true },
-  // },
+  // Admin fields
   approved: { type: Boolean, default: false },
   rejected: { type: Boolean, default: false },
-rejectionReason: { type: String, default: "" },
+  rejectionReason: { type: String, default: "" },
+  featured: { type: Boolean, default: false },
 
 }, { timestamps: true });
 
 module.exports = mongoose.model("Property", propertySchema);
-

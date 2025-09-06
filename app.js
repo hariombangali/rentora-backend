@@ -3,6 +3,8 @@ const cors = require('cors');
 const dotenv = require('dotenv');
 const connectDB = require('./config/db'); // MongoDB connection
 const { errorHandler } = require('./middlewares/errorHandler');
+const testimonialRoutes = require('./routes/testimonialRoutes');
+const messageRoutes = require("./routes/messageRoutes");
 
 dotenv.config();
 const app = express();
@@ -24,6 +26,8 @@ app.use('/api/auth', require('./routes/authRoutes'));
 app.use('/api/admin', require('./routes/adminRoutes'));
 app.use('/api/properties', require('./routes/PropertyRoutes'));
 app.use('/api', require('./routes/homeRoutes'));
+app.use('/api/testimonials', testimonialRoutes);
+app.use("/api/messages", messageRoutes);
 
 // Error handler
 app.use(errorHandler);

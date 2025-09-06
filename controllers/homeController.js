@@ -24,14 +24,17 @@ const HOW_IT_WORKS = [
   "Move in with peace of mind",
 ];
 
-exports.getHomeData = async (req, res) => {
+exports.getHomeData = async (req, res, next) => {
   try {
-    const latestProperties = await Property.find({ approved: true, rejected: false })
-      .sort({ createdAt: -1 })
-      .limit(6)
-      .populate('user', 'ownerKYC name');
-
-    const testimonials = await Testimonial.find().limit(3);
+    const [latestProperties, testimonials] = await Promise.all([
+      Property.find({ approved: true, rejected: false })
+        .sort({ createdAt: -1 })
+        .limit(6)
+        .select('title price images location point location point createdAt') // keep light
+        .populate('user', 'name ownerKYC')
+        .lean(),
+      Testimonial.find().sort({ createdAt: -1 }).limit(3).lean(),
+    ]);
 
     res.json({
       topAreas: TOP_AREAS,
@@ -41,7 +44,71 @@ exports.getHomeData = async (req, res) => {
       testimonials,
     });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Error fetching home page data" });
+    next(err);
+  }
+};
+
+
+// GET /api/home/areas/popular?limit=10
+exports.getPopularAreas = async (req, res, next) => {
+  try {
+    const limit = Math.min(parseInt(req.query.limit || '10', 10), 50);
+
+    const agg = await Property.aggregate([
+      { $match: { approved: true, rejected: false, 'location.locality': { $exists: true, $ne: '' } } },
+      { $group: { _id: '$location.locality', count: { $sum: 1 } } },
+      { $sort: { count: -1 } },
+      { $limit: limit },
+      { $project: { name: '$_id', count: 1, _id: 0 } },
+    ]);
+
+    res.json({ areas: agg });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// GET /api/home/search/suggest?q=vi&limit=7
+exports.getSuggest = async (req, res, next) => {
+  try {
+    const q = (req.query.q || '').trim();
+    const limit = Math.min(parseInt(req.query.limit || '7', 10), 20);
+    if (q.length < 2) return res.json({ suggestions: [] });
+
+    // Distinct locality and city suggestions using regex i
+    const [localities, cities] = await Promise.all([
+      Property.distinct('location.locality', { 'location.locality': { $regex: q, $options: 'i' }, approved: true }),
+      Property.distinct('location.city', { 'location.city': { $regex: q, $options: 'i' }, approved: true }),
+    ]);
+
+    const suggestions = [
+      ...localities.map((l) => ({ label: l, type: 'locality' })),
+      ...cities.map((c) => ({ label: c, type: 'city' })),
+    ]
+      .filter((s) => s.label)
+      .slice(0, limit);
+
+    res.json({ suggestions });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// GET /api/home/counters
+exports.getHomeCounters = async (req, res, next) => {
+  try {
+    const [verifiedProperties, localities] = await Promise.all([
+      Property.countDocuments({ approved: true, rejected: false }),
+      Property.distinct('location.locality', { approved: true }),
+    ]);
+
+    // tenants counter is a business metric; mock or compute from bookings if you add that
+    res.json({
+      tenants: 5000, // placeholder/business metric
+      verifiedProperties,
+      localities: localities.filter(Boolean).length,
+    });
+  } catch (err) {
+    next(err);
   }
 };

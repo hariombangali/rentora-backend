@@ -238,3 +238,23 @@ exports.deleteUser = async (req, res) => {
     res.status(500).json({ message: "Failed to delete user" });
   }
 };
+// PUT /admin/properties/:id/feature
+exports.featureProperty = async (req, res) => {
+  try {
+    const { featured } = req.body; // boolean
+    const property = await Property.findById(req.params.id);
+    if (!property) return res.status(404).json({ message: 'Property not found' });
+
+    // Only approved properties should be featured
+    if (!property.approved || property.rejected) {
+      return res.status(400).json({ message: 'Only approved properties can be featured' });
+    }
+
+    property.featured = !!featured;
+    await property.save();
+    res.json({ message: `Property ${featured ? 'featured' : 'unfeatured'} successfully`, property });
+  } catch (err) {
+    console.error('Feature toggle error:', err);
+    res.status(500).json({ message: 'Error updating featured status' });
+  }
+};

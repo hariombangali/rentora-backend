@@ -1,7 +1,7 @@
 // scripts/createAdmin.js
 import mongoose from 'mongoose';
 import bcrypt from 'bcrypt';
-import User from '../models/User.js'; // path sahi adjust karna
+import User from '../models/User.js';
 
 const MONGO_URI = "mongodb+srv://hariombangali:hariom_9669@room4rent.vwidsux.mongodb.net/room4rent?retryWrites=true&w=majority";
 
