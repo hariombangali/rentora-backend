@@ -11,6 +11,8 @@ const userSchema = new mongoose.Schema(
       enum: ["guest", "user", "owner", "admin"],
       default: "user", 
     },
+   wishlist: [{ type: mongoose.Schema.Types.ObjectId, ref: "Property" }],
+
     ownerKYC: {
       ownerName: String,
       ownerEmail: String,

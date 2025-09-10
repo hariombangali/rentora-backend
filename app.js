@@ -5,6 +5,9 @@ const connectDB = require('./config/db'); // MongoDB connection
 const { errorHandler } = require('./middlewares/errorHandler');
 const testimonialRoutes = require('./routes/testimonialRoutes');
 const messageRoutes = require("./routes/messageRoutes");
+const bookingRoutes = require("./routes/bookingRoutes");
+const wishlistRoutes = require("./routes/wishlistRoutes");
+
 
 dotenv.config();
 const app = express();
@@ -28,6 +31,8 @@ app.use('/api/properties', require('./routes/PropertyRoutes'));
 app.use('/api', require('./routes/homeRoutes'));
 app.use('/api/testimonials', testimonialRoutes);
 app.use("/api/messages", messageRoutes);
+app.use("/api/bookings", bookingRoutes);
+app.use("/api/wishlist", wishlistRoutes);
 
 // Error handler
 app.use(errorHandler);

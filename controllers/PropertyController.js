@@ -1,54 +1,46 @@
 const Property = require("../models/Property");
 const User = require("../models/User");
-const axios = require('axios');
+const axios = require("axios");
 
-
-
-// --- NEW: Geocoding function using OpenCage ---
+// --- Geocoding function using OpenCage ---
 const geocodeWithOpenCage = async (address) => {
   try {
-    const response = await axios.get('https://api.opencagedata.com/geocode/v1/json', {
+    const response = await axios.get("https://api.opencagedata.com/geocode/v1/json", {
       params: {
         q: address,
-        key: process.env.OPENCAGE_API_KEY, // Use the API key from your .env file
+        key: process.env.OPENCAGE_API_KEY,
         limit: 1,
-        countrycode: 'in' // Prioritize results in India
-      }
+        countrycode: "in",
+      },
     });
 
     if (response.data.results && response.data.results.length > 0) {
       const { lng, lat } = response.data.results[0].geometry;
-      // Return in [longitude, latitude] format
-      return [lng, lat];
+      return [lng, lat]; // [longitude, latitude]
     }
     return null;
   } catch (error) {
-    console.error(`OpenCage geocoding failed for address "${address}":`, error.message);
+    console.error(`OpenCage geocoding failed for "${address}":`, error.message);
     return null;
   }
 };
 
+// ================== CONTROLLERS ==================
+
+// ✅ Post Property
 exports.postProperty = async (req, res) => {
   try {
     const userId = req.user._id;
     const user = await User.findById(userId);
+    if (!user) return res.status(404).json({ message: "User not found" });
 
-    if (!user) {
-      return res.status(404).json({ message: "User not found" });
-    }
-
-    // --- Geocoding with Nominatim ---
     const { address, city, pincode, locality } = req.body;
-    const fullAddress = `${address}, ${locality}, ${city}, ${pincode},  India`;
+    const fullAddress = `${address}, ${locality}, ${city}, ${pincode}, India`;
     const coordinates = await geocodeWithOpenCage(fullAddress);
 
-    // --- File Handling ---
-    // const imageFiles = req.files?.images?.map(file => file.filename) || [];
     const ownerIdFile = req.files?.ownerIdFile?.[0]?.filename || null;
     const ownershipProofFile = req.files?.ownershipProofFile?.[0]?.filename || null;
 
-    // --- Prepare Property Data ---
-  // --- THIS IS THE FIX: Construct the data object carefully ---
     const newPropertyData = {
       user: userId,
       title: req.body.title,
@@ -74,62 +66,41 @@ exports.postProperty = async (req, res) => {
       noticePeriod: req.body.noticePeriod,
       commonAreaFacilities: req.body.commonAreaFacilities,
       pgAmenities: req.body.pgAmenities,
-      images: req.files?.images?.map(file => file.filename) || [],
-      // Create the nested location object correctly
-      location: {
-        city,
-        locality,
-        address,
-        pincode,
-      }
+      images: req.files?.images?.map((file) => file.filename) || [],
+      location: { city, locality, address, pincode },
     };
 
-    // Only add the location field if geocoding was successful
     if (coordinates) {
-      newPropertyData.location.point = {
-        type: 'Point',
-        coordinates: coordinates,
-      };
-    } else {
-      console.warn(`Property is being saved without coordinates for address: ${fullAddress}`);
+      newPropertyData.location.point = { type: "Point", coordinates };
     }
 
     const newProperty = new Property(newPropertyData);
     const savedProperty = await newProperty.save();
 
-    // --- Update User Role and KYC ---
-    if (user.role !== 'owner') {
-      user.role = 'owner';
-    }
-    
+    if (user.role !== "owner") user.role = "owner";
     user.ownerKYC = {
       ownerName: req.body.ownerName,
       ownerEmail: req.body.ownerEmail,
       ownerPhone: req.body.ownerPhone,
       ownerIdType: req.body.ownerIdType,
       ownerIdNumber: req.body.ownerIdNumber,
-      ownerIdFile: ownerIdFile,
+      ownerIdFile,
       ownershipProofType: req.body.ownershipProofType,
       ownershipProofDocNumber: req.body.ownershipProofDocNumber,
-      ownershipProofFile: ownershipProofFile,
+      ownershipProofFile,
     };
-    
     await user.save();
 
     res.status(201).json(savedProperty);
-
   } catch (error) {
-    console.error("Error in postProperty controller:", error);
-    res.status(500).json({
-      message: "An error occurred while posting the property.",
-      error: error.message,
-    });
+    console.error("Error in postProperty:", error);
+    res.status(500).json({ message: "An error occurred while posting the property.", error: error.message });
   }
 };
 
+// ✅ Get All Properties (only approved)
 exports.getAllProperties = async (req, res) => {
   try {
-    // Always return only approved properties for normal users
     const properties = await Property.find({ approved: true });
     res.json(properties);
   } catch (error) {
@@ -137,17 +108,16 @@ exports.getAllProperties = async (req, res) => {
   }
 };
 
+// ✅ Get Property by ID (only approved)
 exports.getPropertyById = async (req, res) => {
-  const { id } = req.params;
-
   try {
-    // MongoDB _id field ke saath find karna
-    const property = await Property.findOne({ _id: id, approved: true }).populate("user", "ownerKYC.ownerName ownerKYC.ownerEmail ownerKYC.ownerPhone");
+    const property = await Property.findOne({ _id: req.params.id, approved: true }).populate(
+      "user",
+      "ownerKYC.ownerName ownerKYC.ownerEmail ownerKYC.ownerPhone"
+    );
 
-    if (!property) {
-      return res.status(404).json({ message: "Property not found or not approved" });
-    }
-                 
+    if (!property) return res.status(404).json({ message: "Property not found or not approved" });
+
     res.json(property);
   } catch (error) {
     console.error("Error fetching property by id:", error);
@@ -155,90 +125,222 @@ exports.getPropertyById = async (req, res) => {
   }
 };
 
+// ✅ Get My Properties (Owner)
 exports.getMyProperties = async (req, res) => {
   try {
     const userId = req.user._id;
-
-    // Sare properties fetch karo, saare statuses ke saath
     const properties = await Property.find({ user: userId }).sort({ createdAt: -1 });
 
-    // Ye mapping optional hai. Agar aap simple JSON bhejte ho toh frontend handle kar sakta hai.
-    // Lekin agar kuch field rename karna ya extra status banana ho toh aise bhi kar sakte ho:
+    const result = properties.map((p) => ({
+      _id: p._id,
+      title: p.title,
+      price: p.price,
+      createdAt: p.createdAt,
+      images: p.images,
+      approved: p.approved,
+      rejected: p.rejected,
+      rejectionReason: p.rejectionReason,
+      active: p.active,
+      status: p.approved ? "Approved" : p.rejected ? "Rejected" : "Pending",
+    }));
 
-    // const propertiesWithStatus = properties.map((p) => ({
-    //   ...p.toObject(),
-    //   status: p.approved ? "Approved" : p.rejected ? "Rejected" : "Pending",
-    // }));
-
-    res.json(properties);
+    res.json(result);
   } catch (error) {
     console.error("Error fetching my properties:", error);
     res.status(500).json({ message: "Failed to fetch your properties" });
   }
 };
 
+// ✅ Map Locations
 exports.getMapLocations = async (req, res) => {
-    try {
-        const properties = await Property.find({ 
-            approved: true, 
-            'location.point': { $exists: true } // Check for the nested 'point' object
-        }).select('_id title price location.point.coordinates images'); // Select the nested coordinates
+  try {
+    const properties = await Property.find({ approved: true, "location.point": { $exists: true } }).select(
+      "_id title price location.point.coordinates images"
+    );
 
-        // Remap the data for the frontend to keep the same structure
-        const remappedProperties = properties.map(p => ({
-            _id: p._id,
-            title: p.title,
-            price: p.price,
-            images: p.images,
-            location: {
-                coordinates: p.location.point.coordinates
-            }
-        }));
-
-        res.json(remappedProperties);
-    } catch (error) {
-        console.error("Error fetching map locations:", error);
-        res.status(500).json({ message: "Failed to fetch map locations" });
-    }
+    res.json(
+      properties.map((p) => ({
+        _id: p._id,
+        title: p.title,
+        price: p.price,
+        images: p.images,
+        location: { coordinates: p.location.point.coordinates },
+      }))
+    );
+  } catch (error) {
+    console.error("Error fetching map locations:", error);
+    res.status(500).json({ message: "Failed to fetch map locations" });
+  }
 };
 
+// ✅ Featured Properties
 exports.getFeaturedProperties = async (req, res, next) => {
   try {
-    const limit = Math.min(parseInt(req.query.limit || '10', 10), 30);
+    const limit = Math.min(parseInt(req.query.limit || "10", 10), 30);
     const base = { approved: true, rejected: false };
 
     let properties = await Property.find({ ...base, featured: true })
       .sort({ createdAt: -1 })
       .limit(limit)
-      .select('title price images location.point.coordinates')
+      .select("title price images location.point.coordinates")
       .lean();
 
     if (!properties.length) {
       properties = await Property.find({
         ...base,
         images: { $exists: true, $ne: [] },
-        'location.point.coordinates': { $exists: true, $ne: [] },
+        "location.point.coordinates": { $exists: true, $ne: [] },
       })
-      .sort({ createdAt: -1 })
-      .limit(limit)
-      .select('title price images location.point.coordinates')
-      .lean();
+        .sort({ createdAt: -1 })
+        .limit(limit)
+        .select("title price images location.point.coordinates")
+        .lean();
     }
 
     res.json(properties);
-  } catch (err) { next(err); }
+  } catch (err) {
+    next(err);
+  }
 };
 
+// ✅ Latest Properties
 exports.getLatestProperties = async (req, res, next) => {
   try {
-    const limit = Math.min(parseInt(req.query.limit || '6', 10), 50);
+    const limit = Math.min(parseInt(req.query.limit || "6", 10), 50);
     const properties = await Property.find({ approved: true, rejected: false })
       .sort({ createdAt: -1 })
       .limit(limit)
-      .select('title price images location.point coordinates')
+      .select("title price images location.point coordinates")
       .lean();
     res.json(properties);
   } catch (err) {
     next(err);
+  }
+};
+
+// ✅ Update Property (Owner only)
+// Ensure this route has multer: upload.array('images', 8) or upload.fields([{ name: 'images', maxCount: 8 }]) [8][6]
+// controllers/properties.js
+exports.updateProperty = async (req, res) => {
+  try {
+    const property = await Property.findById(req.params.id);
+    if (!property) return res.status(404).json({ message: "Property not found" });
+
+    if (property.user.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ message: "Not authorized to edit this property" });
+    }
+
+    const body = req.body || {};
+
+    // Helper: repeated key -> array
+    const toArray = (v) => (Array.isArray(v) ? v : v == null ? [] : [v]);
+
+    // Arrays (support both plain and bracketed)
+    const pgAmenities = toArray(body.pgAmenities ?? body["pgAmenities[]"]);
+    const commonAreaFacilities = toArray(body.commonAreaFacilities ?? body["commonAreaFacilities[]"]);
+    const retained = toArray(body.retainedImages ?? body["retainedImages[]"]);
+
+    // Coercions
+    const num = (v) => (v === "" || v == null ? undefined : Number(v));
+    const dateOrUndef = (v) => (v ? new Date(v) : undefined);
+
+    // Map primitives
+    property.title = body.title ?? property.title;
+    property.description = body.description ?? property.description;
+    property.availableFor = body.availableFor ?? property.availableFor;
+    property.preferredTenants = body.preferredTenants ?? property.preferredTenants;
+    property.occupancyType = body.occupancyType ?? property.occupancyType;
+    property.sharingCount = body.sharingCount ?? property.sharingCount;
+    property.bedrooms = num(body.bedrooms) ?? property.bedrooms;
+    property.attachedBathroom = body.attachedBathroom ?? property.attachedBathroom;
+    property.attachedBalcony = body.attachedBalcony ?? property.attachedBalcony;
+    property.furnishing = body.roomFurnishing ?? body.furnishing ?? property.furnishing; // frontend sends furnishing too
+    property.ageOfProperty = body.ageOfProperty ?? property.ageOfProperty;
+    property.totalFloors = num(body.totalFloors) ?? property.totalFloors;
+    property.propertyOnFloor = num(body.propertyOnFloor) ?? property.propertyOnFloor;
+
+    property.price = num(body.price) ?? property.price;
+    property.deposit = num(body.deposit) ?? property.deposit;
+    property.maintenance = num(body.maintenance) ?? property.maintenance;
+    property.maintenanceFreq = body.maintenanceFreq ?? property.maintenanceFreq;
+    property.earlyLeavingCharges = num(body.earlyLeavingCharges) ?? property.earlyLeavingCharges;
+    property.minContractDuration = body.minContractDuration ?? property.minContractDuration;
+    property.noticePeriod = body.noticePeriod ?? property.noticePeriod;
+
+    const availableFrom = dateOrUndef(body.availableFrom);
+    if (availableFrom) property.availableFrom = availableFrom;
+
+    // Merge location per-path (preserve required locality)
+    property.set('location.address', body.address ?? property.location?.address);
+    property.set('location.city', body.city ?? property.location?.city);
+    property.set('location.locality', body.locality ?? property.location?.locality);
+    property.set('location.pincode', body.pincode ?? property.location?.pincode);
+
+    // Arrays (only replace if provided)
+    if (pgAmenities.length) property.pgAmenities = pgAmenities;
+    if (commonAreaFacilities.length) property.commonAreaFacilities = commonAreaFacilities;
+
+    // Images: retained + new uploads
+    let newUploads = [];
+    if (Array.isArray(req.files)) newUploads = req.files.map((f) => f.filename); // upload.array
+    else if (req.files?.images) newUploads = req.files.images.map((f) => f.filename); // upload.fields
+
+    if (retained.length || newUploads.length) {
+      property.images = [...retained, ...newUploads];
+    }
+
+    // Reset moderation flags on edit
+    property.approved = false;
+    property.rejected = false;
+    property.rejectionReason = "";
+
+    const saved = await property.save();
+    res.json(saved);
+  } catch (error) {
+    console.error("Error updating property:", error);
+    res.status(500).json({ message: "Failed to update property", error: error.message });
+  }
+};
+
+
+
+// ✅ Soft Delete Property (Owner only)
+exports.softDeleteProperty = async (req, res) => {
+  try {
+    const property = await Property.findById(req.params.id);
+    if (!property) return res.status(404).json({ message: "Property not found" });
+
+    if (property.user.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ message: "Not authorized to delete this property" });
+    }
+
+    property.active = false;
+    await property.save();
+
+    res.json({ message: "Property deactivated (soft deleted)" });
+  } catch (error) {
+    console.error("Error deleting property:", error);
+    res.status(500).json({ message: "Failed to delete property", error: error.message });
+  }
+};
+
+// ✅ Toggle Active/Inactive
+exports.toggleActive = async (req, res) => {
+  try {
+    const property = await Property.findById(req.params.id);
+    if (!property) return res.status(404).json({ message: "Property not found" });
+
+    if (property.user.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ message: "Not authorized to update this property" });
+    }
+
+    const { active } = req.body;
+    property.active = typeof active === "boolean" ? active : !property.active;
+
+    await property.save();
+    res.json({ _id: property._id, active: property.active });
+  } catch (error) {
+    console.error("Error toggling active:", error);
+    res.status(500).json({ message: "Failed to update property status", error: error.message });
   }
 };

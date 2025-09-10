@@ -61,6 +61,7 @@ location: {
   rejected: { type: Boolean, default: false },
   rejectionReason: { type: String, default: "" },
   featured: { type: Boolean, default: false },
+   active: { type: Boolean, default: true },
 
 }, { timestamps: true });
 

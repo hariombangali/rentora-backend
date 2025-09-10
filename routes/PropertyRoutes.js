@@ -1,6 +1,6 @@
 const express = require('express');
 const multer = require('multer');
-const { postProperty, getAllProperties, getPropertyById, getMyProperties, getMapLocations, getFeaturedProperties, getLatestProperties } = require('../controllers/PropertyController');
+const { postProperty, getAllProperties, getPropertyById, getMyProperties, getMapLocations, getFeaturedProperties, getLatestProperties, updateProperty, softDeleteProperty, toggleActive } = require('../controllers/PropertyController');
 const { protect } = require('../middlewares/authMiddleware');
 const roleMiddleware = require('../middlewares/roleMiddleware');
 
@@ -32,6 +32,9 @@ router.post('/',protect,roleMiddleware('user', 'owner'),propertyUpload,postPrope
 router.get('/map-locations', getMapLocations);
 router.get('/', getAllProperties);
 router.get('/my-properties', protect, roleMiddleware('owner'), getMyProperties);
+router.put("/:id", protect, roleMiddleware("owner"),  upload.fields([{ name: 'images', maxCount: 8 }]), updateProperty);
+router.delete("/:id", protect, roleMiddleware("owner"), softDeleteProperty);
+router.put("/:id/toggle", protect, roleMiddleware("owner"), toggleActive);
 router.get('/featured', getFeaturedProperties);
 router.get('/latest', getLatestProperties);
 router.get("/:id", getPropertyById); 
