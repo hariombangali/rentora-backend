@@ -8,18 +8,38 @@ const messageRoutes = require("./routes/messageRoutes");
 const bookingRoutes = require("./routes/bookingRoutes");
 const wishlistRoutes = require("./routes/wishlistRoutes");
 
-
 dotenv.config();
 const app = express();
 
 // Connect to MongoDB
 connectDB();
 
+// ✅ Allowed Origins (production + localhost + any vercel preview)
+const allowedOrigins = [
+  process.env.CLIENT_URL,        // production frontend
+  "http://localhost:5173",       // dev
+  /\.vercel\.app$/               // all vercel preview domains
+];
+
 // Middlewares
-app.use(cors({
- origin: process.env.CLIENT_URL || 'http://localhost:5173', // adjust as per your frontend URL
-  credentials: true,
-}));
+app.use(
+  cors({
+    origin: function (origin, callback) {
+      if (!origin) return callback(null, true); // allow mobile/curl/postman without origin
+      if (
+        allowedOrigins.some((o) => {
+          if (o instanceof RegExp) return o.test(origin);
+          return o === origin;
+        })
+      ) {
+        callback(null, true);
+      } else {
+        callback(new Error("Not allowed by CORS: " + origin));
+      }
+    },
+    credentials: true,
+  })
+);
 
 app.use(express.json());
 app.use('/uploads', express.static('uploads'));
