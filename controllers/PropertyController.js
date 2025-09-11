@@ -38,8 +38,9 @@ exports.postProperty = async (req, res) => {
     const fullAddress = `${address}, ${locality}, ${city}, ${pincode}, India`;
     const coordinates = await geocodeWithOpenCage(fullAddress);
 
-    const ownerIdFile = req.files?.ownerIdFile?.[0]?.filename || null;
-    const ownershipProofFile = req.files?.ownershipProofFile?.[0]?.filename || null;
+    const ownerIdFile = req.files?.ownerIdFile?.[0]?.path || null;
+    const ownershipProofFile = req.files?.ownershipProofFile?.[0]?.path || null;
+
 
     const newPropertyData = {
       user: userId,
@@ -66,7 +67,7 @@ exports.postProperty = async (req, res) => {
       noticePeriod: req.body.noticePeriod,
       commonAreaFacilities: req.body.commonAreaFacilities,
       pgAmenities: req.body.pgAmenities,
-      images: req.files?.images?.map((file) => file.filename) || [],
+      images: req.files?.images?.map((file) => file.path) || [],
       location: { city, locality, address, pincode },
     };
 
@@ -282,8 +283,9 @@ exports.updateProperty = async (req, res) => {
 
     // Images: retained + new uploads
     let newUploads = [];
-    if (Array.isArray(req.files)) newUploads = req.files.map((f) => f.filename); // upload.array
-    else if (req.files?.images) newUploads = req.files.images.map((f) => f.filename); // upload.fields
+    if (Array.isArray(req.files)) newUploads = req.files.map((f) => f.path);
+    else if (req.files?.images) newUploads = req.files.images.map((f) => f.path);
+
 
     if (retained.length || newUploads.length) {
       property.images = [...retained, ...newUploads];
