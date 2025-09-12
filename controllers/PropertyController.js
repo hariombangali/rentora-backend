@@ -31,7 +31,7 @@ const geocodeWithOpenCage = async (address) => {
 exports.postProperty = async (req, res) => {
   try {
 
-        console.log("REQ.USER:", req.user);
+    console.log("REQ.USER:", req.user);
     console.log("REQ.BODY:", req.body);
     console.log("REQ.FILES:", req.files);
 
