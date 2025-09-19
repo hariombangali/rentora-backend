@@ -11,7 +11,6 @@ const wishlistRoutes = require("./routes/wishlistRoutes");
 dotenv.config();
 const app = express();
 
-// Connect to MongoDB
 connectDB();
 
 // ✅ Allowed Origins (production + localhost + any vercel preview)
@@ -42,7 +41,7 @@ app.use(
 );
 
 app.use(express.json());
-app.use('/uploads', express.static('uploads'));
+// app.use('/uploads', express.static('uploads'));
 
 // Routes
 app.use('/api/auth', require('./routes/authRoutes'));
@@ -51,7 +50,7 @@ app.use('/api/properties', require('./routes/PropertyRoutes'));
 app.use('/api', require('./routes/homeRoutes'));
 app.use('/api/testimonials', testimonialRoutes);
 app.use("/api/messages", messageRoutes);
-app.use("/api/bookings", bookingRoutes);
+app.use("/api", bookingRoutes);
 app.use("/api/wishlist", wishlistRoutes);
 
 // Error handler

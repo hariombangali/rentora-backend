@@ -1,6 +1,8 @@
 const Property = require("../models/Property");
 const User = require("../models/User");
 const axios = require("axios");
+const { escapeRegex } = require('../utils/escapeRegex');
+
 
 // --- Geocoding function using OpenCage ---
 const geocodeWithOpenCage = async (address) => {
@@ -25,9 +27,6 @@ const geocodeWithOpenCage = async (address) => {
   }
 };
 
-// ================== CONTROLLERS ==================
-
-// ✅ Post Property
 exports.postProperty = async (req, res) => {
   try {
 
@@ -104,7 +103,6 @@ exports.postProperty = async (req, res) => {
   }
 };
 
-// ✅ Get All Properties (only approved)
 exports.getAllProperties = async (req, res) => {
   try {
     const properties = await Property.find({ approved: true });
@@ -114,7 +112,6 @@ exports.getAllProperties = async (req, res) => {
   }
 };
 
-// ✅ Get Property by ID (only approved)
 exports.getPropertyById = async (req, res) => {
   try {
     const property = await Property.findOne({ _id: req.params.id, approved: true }).populate(
@@ -131,7 +128,6 @@ exports.getPropertyById = async (req, res) => {
   }
 };
 
-// ✅ Get My Properties (Owner)
 exports.getMyProperties = async (req, res) => {
   try {
     const userId = req.user._id;
@@ -157,7 +153,6 @@ exports.getMyProperties = async (req, res) => {
   }
 };
 
-// ✅ Map Locations
 exports.getMapLocations = async (req, res) => {
   try {
     const properties = await Property.find({ approved: true, "location.point": { $exists: true } }).select(
@@ -179,7 +174,6 @@ exports.getMapLocations = async (req, res) => {
   }
 };
 
-// ✅ Featured Properties
 exports.getFeaturedProperties = async (req, res, next) => {
   try {
     const limit = Math.min(parseInt(req.query.limit || "10", 10), 30);
@@ -209,7 +203,6 @@ exports.getFeaturedProperties = async (req, res, next) => {
   }
 };
 
-// ✅ Latest Properties
 exports.getLatestProperties = async (req, res, next) => {
   try {
     const limit = Math.min(parseInt(req.query.limit || "6", 10), 50);
@@ -224,9 +217,6 @@ exports.getLatestProperties = async (req, res, next) => {
   }
 };
 
-// ✅ Update Property (Owner only)
-// Ensure this route has multer: upload.array('images', 8) or upload.fields([{ name: 'images', maxCount: 8 }]) [8][6]
-// controllers/properties.js
 exports.updateProperty = async (req, res) => {
   try {
     const property = await Property.findById(req.params.id);
@@ -309,9 +299,6 @@ exports.updateProperty = async (req, res) => {
   }
 };
 
-
-
-// ✅ Soft Delete Property (Owner only)
 exports.softDeleteProperty = async (req, res) => {
   try {
     const property = await Property.findById(req.params.id);
@@ -331,7 +318,6 @@ exports.softDeleteProperty = async (req, res) => {
   }
 };
 
-// ✅ Toggle Active/Inactive
 exports.toggleActive = async (req, res) => {
   try {
     const property = await Property.findById(req.params.id);
@@ -349,5 +335,83 @@ exports.toggleActive = async (req, res) => {
   } catch (error) {
     console.error("Error toggling active:", error);
     res.status(500).json({ message: "Failed to update property status", error: error.message });
+  }
+};
+
+exports.searchProperties = async (req, res) => {
+  try {
+    const raw = (req.query.search || req.query.query || "").trim();
+    const tokens = raw.match(/"([^"]+)"|(\S+)/g)?.map(t => t.replace(/^"|"$/g, "")) || [];
+    if (!tokens.length) return res.json([]);
+
+    // Query both nested and root fields
+    const fields = [
+      "title",
+      "location.city", "city",          // support both
+      "location.locality", "locality",
+      "location.address", "address",
+      "project"
+    ]; // [1][2]
+
+    const andClauses = tokens.map(tok => {
+      const rx = new RegExp(`\\b${escapeRegex(tok)}`, "i"); // word-anchored [4]
+      return { $or: fields.map(f => ({ [f]: { $regex: rx } })) }; // [2]
+    });
+
+    const query = { approved: true, $and: andClauses };
+    const properties = await Property.find(query).limit(50);
+    return res.json(properties);
+  } catch (error) {
+    console.error("Error searching properties:", error);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+// FILTERED LIST (Hero + sidebar) — GET /api/properties?area=&occupancyType=&minRent=&maxRent=&approved=
+exports.getFilteredProperties = async (req, res) => {
+  try {
+    const { area, occupancyType, minRent, maxRent, approved } = req.query;
+
+    const and = [];
+
+    // Approved default true
+    if (typeof approved !== "undefined") {
+      and.push({ approved: approved === "true" });
+    } else {
+      and.push({ approved: true });
+    } // [3]
+
+    // Area across city/locality (nested + root)
+    if (area && area.trim()) {
+      const rx = new RegExp(escapeRegex(area.trim()), "i");
+      and.push({
+        $or: [
+          { "location.city": { $regex: rx } },
+          { "location.locality": { $regex: rx } },
+          { city: { $regex: rx } },
+          { locality: { $regex: rx } },
+        ],
+      });
+    } // [1][2]
+
+    // Occupancy type
+    if (occupancyType) {
+      and.push({ occupancyType });
+    } // [5]
+
+    // Rent
+    if (minRent || maxRent) {
+      const price = {};
+      if (minRent) price.$gte = Number(minRent);
+      if (maxRent) price.$lte = Number(maxRent);
+      and.push({ price });
+    } // [5]
+
+    const query = and.length ? { $and: and } : {};
+    const properties = await Property.find(query).limit(50);
+    return res.json(properties);
+  } catch (error) {
+    console.error("Error fetching filtered properties:", error);
+    res.status(500).json({ message: "Server error" });
   }
 };

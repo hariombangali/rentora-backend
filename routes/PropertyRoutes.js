@@ -10,6 +10,8 @@ const {
   updateProperty,
   softDeleteProperty,
   toggleActive,
+  searchProperties,
+  getFilteredProperties,
 } = require("../controllers/PropertyController");
 
 const { protect } = require("../middlewares/authMiddleware");
@@ -55,6 +57,9 @@ router.delete("/:id", protect, roleMiddleware("owner"), softDeleteProperty);
 router.put("/:id/toggle", protect, roleMiddleware("owner"), toggleActive);
 router.get("/featured", getFeaturedProperties);
 router.get("/latest", getLatestProperties);
+router.get("/search", searchProperties);
+router.get("/", getFilteredProperties);
 router.get("/:id", getPropertyById);
+
 
 module.exports = router;

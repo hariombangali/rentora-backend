@@ -1,9 +1,10 @@
 // controllers/homeController.js
 const Property = require('../models/Property');
 const Testimonial = require('../models/Testimonial');
+const { escapeRegex } = require('../utils/escapeRegex');
 
 const TOP_AREAS = [
-  { name: "Palasia", icon: "🏙️" },
+  { name: "Palasia", icon: "🏙️" }, 
   { name: "Vijay Nagar", icon: "🌇" },
   { name: "Sudama Nagar", icon: "🏢" },
   { name: "Bhawarkua", icon: "🏘️" },
@@ -71,24 +72,52 @@ exports.getPopularAreas = async (req, res, next) => {
 // GET /api/home/search/suggest?q=vi&limit=7
 exports.getSuggest = async (req, res, next) => {
   try {
-    const q = (req.query.q || '').trim();
-    const limit = Math.min(parseInt(req.query.limit || '7', 10), 20);
-    if (q.length < 2) return res.json({ suggestions: [] });
+    const q = (req.query.q || "").trim();
+    const limit = Math.min(parseInt(req.query.limit || "7", 10), 20);
+    if (!q) return res.json([]); // return plain array
 
-    // Distinct locality and city suggestions using regex i
-    const [localities, cities] = await Promise.all([
-      Property.distinct('location.locality', { 'location.locality': { $regex: q, $options: 'i' }, approved: true }),
-      Property.distinct('location.city', { 'location.city': { $regex: q, $options: 'i' }, approved: true }),
-    ]);
+    // Word-boundary prefix match (case-insensitive)
+    const rx = new RegExp(`\\b${escapeRegex(q)}`, "i"); // [3][4]
 
-    const suggestions = [
-      ...localities.map((l) => ({ label: l, type: 'locality' })),
-      ...cities.map((c) => ({ label: c, type: 'city' })),
-    ]
-      .filter((s) => s.label)
-      .slice(0, limit);
+    // Match both flat and nested paths to be schema-agnostic
+    const match = {
+      approved: true,
+      $or: [
+        { city: { $regex: rx } },
+        { locality: { $regex: rx } },
+        { "location.city": { $regex: rx } },
+        { "location.locality": { $regex: rx } },
+        { title: { $regex: rx } },
+      ],
+    };
 
-    res.json({ suggestions });
+    const pipeline = [
+      { $match: match },
+      {
+        $project: {
+          list: [
+            { label: "$city", type: "city" },
+            { label: "$locality", type: "locality" },
+            { label: "$location.city", type: "city" },
+            { label: "$location.locality", type: "locality" },
+            { label: "$title", type: "title" },
+          ],
+        },
+      },
+      { $unwind: "$list" },
+      // keep only strings that match the regex
+      {
+        $match: {
+          "list.label": { $type: "string", $regex: rx },
+        },
+      },
+      { $group: { _id: { label: "$list.label", type: "$list.type" } } },
+      { $project: { _id: 0, label: "$_id.label", type: "$_id.type" } },
+      { $limit: limit },
+    ];
+
+    const out = await Property.aggregate(pipeline);
+    return res.json(out);
   } catch (err) {
     next(err);
   }

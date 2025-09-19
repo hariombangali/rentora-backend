@@ -1,16 +1,26 @@
-// routes/bookingRoutes.js
+// routes/index.js
 const express = require("express");
 const router = express.Router();
+const { protect } = require("../middlewares/authMiddleware"); // <-- adjust if your folder is 'middlewares'
 const bookingCtrl = require("../controllers/bookingController");
-const { protect } = require("../middlewares/authMiddleware"); // your existing auth
 
-router.post("/", protect, bookingCtrl.createBooking);
-router.get("/my", protect, bookingCtrl.getMyBookings);
-router.get("/owner", protect, bookingCtrl.getOwnerBookings);
-router.get("/availability/:propertyId", protect, bookingCtrl.checkAvailability); // ?start=&end=
-router.get("/:id", protect, bookingCtrl.getBookingById);
-router.put("/:id/approve", protect, bookingCtrl.approveBooking);
-router.put("/:id/reject", protect, bookingCtrl.rejectBooking);
-router.put("/:id/cancel", protect, bookingCtrl.cancelBooking);
+// Unified booking routes
+router.post("/bookings", protect, bookingCtrl.createBooking);
+router.get("/bookings/my", protect, bookingCtrl.getMyBookings);
+router.get("/bookings/owner", protect, bookingCtrl.getOwnerBookings);
+router.get("/bookings/:id", protect, bookingCtrl.getBookingById);
+router.patch("/bookings/:id/approve", protect, bookingCtrl.approveBooking);
+router.patch("/bookings/:id/reject", protect, bookingCtrl.rejectBooking);
+router.patch("/bookings/:id/reschedule", protect, bookingCtrl.rescheduleBooking);
+router.patch("/bookings/:id/cancel", protect, bookingCtrl.cancelBooking);
+router.get("/bookings/availability", bookingCtrl.getVisitAvailability);
+router.get("/bookings/check-dates/:propertyId", bookingCtrl.checkDates);
+
+// Aliases to match current frontend calls (PDP)
+router.post("/leads", protect, bookingCtrl.createLeadAlias);
+router.post("/visits", protect, bookingCtrl.createVisitAlias);
+router.get("/visits/availability", bookingCtrl.getVisitAvailabilityAlias);
+router.get("/contacts/quota", protect, bookingCtrl.getContactQuota);
+router.post("/contacts/reveal-phone", protect, bookingCtrl.revealPhone);
 
 module.exports = router;
