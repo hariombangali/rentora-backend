@@ -18,7 +18,7 @@ const bookingSchema = new mongoose.Schema(
     owner: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },  // property owner
 
     // Unified type
-    type: { type: String, enum: ["lead", "visit", "rental"], required: true },
+    type: { type: String, enum: ["lead", "visit", "rental", "reveal"], required: true },
 
     // Common
     message: { type: String, default: "" },
@@ -49,9 +49,10 @@ const bookingSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// Helpful indexes
 bookingSchema.index({ property: 1, type: 1, status: 1 });
 bookingSchema.index({ property: 1, visitDate: 1, visitSlot: 1, status: 1 });
 bookingSchema.index({ property: 1, checkIn: 1, checkOut: 1, status: 1 });
+bookingSchema.index({ user: 1, createdAt: -1 });
+bookingSchema.index({ owner: 1, createdAt: -1 });
 
 module.exports = mongoose.model("Booking", bookingSchema);

@@ -65,4 +65,14 @@ location: {
 
 }, { timestamps: true });
 
+propertySchema.index({ user: 1 });
+propertySchema.index({ approved: 1 });
+propertySchema.index({ rejected: 1 });
+propertySchema.index({ approved: 1, rejected: 1, createdAt: -1 });
+propertySchema.index({ featured: 1, approved: 1 });
+propertySchema.index({ price: 1 });
+propertySchema.index({ "location.city": 1 });
+propertySchema.index({ "location.locality": 1 });
+propertySchema.index({ "location.point": "2dsphere" });
+
 module.exports = mongoose.model("Property", propertySchema);

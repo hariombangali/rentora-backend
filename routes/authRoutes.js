@@ -13,7 +13,7 @@ const router = express.Router();
 
 router.post('/register', registerUser);
 router.post('/login', loginUser);
-router.get('/check-user', checkUserExists); // NEW route
+router.get('/check-user', checkUserExists);
 router.put("/upgrade-role", protect, upgradeUserRole);
 router.post("/send-otp", sendOtp);
 router.post("/verify-otp", verifyOtp);

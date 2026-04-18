@@ -1,5 +1,6 @@
 // controllers/homeController.js
 const Property = require('../models/Property');
+const User = require('../models/User');
 const Testimonial = require('../models/Testimonial');
 const { escapeRegex } = require('../utils/escapeRegex');
 
@@ -31,12 +32,13 @@ exports.getHomeData = async (req, res, next) => {
       Property.find({ approved: true, rejected: false })
         .sort({ createdAt: -1 })
         .limit(6)
-        .select('title price images location point location point createdAt') // keep light
+        .select('title price images location createdAt')
         .populate('user', 'name ownerKYC')
         .lean(),
       Testimonial.find().sort({ createdAt: -1 }).limit(3).lean(),
     ]);
 
+    res.set('Cache-Control', 'public, max-age=3600');
     res.json({
       topAreas: TOP_AREAS,
       benefits: BENEFITS,
@@ -63,6 +65,7 @@ exports.getPopularAreas = async (req, res, next) => {
       { $project: { name: '$_id', count: 1, _id: 0 } },
     ]);
 
+    res.set('Cache-Control', 'public, max-age=3600');
     res.json({ areas: agg });
   } catch (err) {
     next(err);
@@ -131,9 +134,10 @@ exports.getHomeCounters = async (req, res, next) => {
       Property.distinct('location.locality', { approved: true }),
     ]);
 
-    // tenants counter is a business metric; mock or compute from bookings if you add that
+    const tenants = await User.countDocuments({ role: 'user' });
+    res.set('Cache-Control', 'public, max-age=3600');
     res.json({
-      tenants: 5000, // placeholder/business metric
+      tenants,
       verifiedProperties,
       localities: localities.filter(Boolean).length,
     });

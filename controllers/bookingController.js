@@ -1,10 +1,14 @@
-// controllers/bookingController.js
 const mongoose = require("mongoose");
 const Booking = require("../models/Booking");
 const Property = require("../models/Property");
+const User = require("../models/User");
+const { sendBookingStatusEmail, sendNewBookingEmail } = require("../utils/sendEmail");
 
 const DEFAULT_SLOTS = ["10:00 AM", "12:00 PM", "3:00 PM", "6:00 PM"];
 const MAX_PER_SLOT = 1;
+
+// Fire-and-forget email — never blocks the response
+const fireEmail = (fn, ...args) => fn(...args).catch((e) => console.error("Email send failed:", e.message));
 
 const normalizeDay = (d) => {
   const dt = new Date(d);
@@ -13,7 +17,7 @@ const normalizeDay = (d) => {
 };
 
 const ensureParties = async (propertyId, requesterId) => {
-  const property = await Property.findById(propertyId).select("user price");
+  const property = await Property.findById(propertyId).select("user price title");
   if (!property) return { error: "Property not found" };
   if (property.user.toString() === requesterId.toString()) {
     return { error: "Action not allowed on own listing" };
@@ -76,6 +80,11 @@ exports.createBooking = async (req, res) => {
         return res.status(200).json({ booking: existing, message: "Lead updated" });
       }
       const booking = await Booking.create(doc);
+      // Notify owner of new lead
+      const ownerDoc = await User.findById(property.user).select("email name").lean();
+      if (ownerDoc?.email) {
+        fireEmail(sendNewBookingEmail, ownerDoc.email, { bookingType: "enquiry", propertyTitle: property.title, seekerName: req.user.name });
+      }
       return res.status(201).json({ booking, message: "Lead created" });
     }
 
@@ -101,6 +110,11 @@ exports.createBooking = async (req, res) => {
       doc.visitDate = day;
       doc.visitSlot = vSlot;
       const booking = await Booking.create(doc);
+      // Notify owner of new visit request
+      const ownerDoc = await User.findById(property.user).select("email name").lean();
+      if (ownerDoc?.email) {
+        fireEmail(sendNewBookingEmail, ownerDoc.email, { bookingType: "visit", propertyTitle: property.title, seekerName: req.user.name });
+      }
       return res.status(201).json({ booking, message: "Visit requested" });
     }
 
@@ -204,6 +218,16 @@ exports.approveBooking = async (req, res) => {
     }
     b.isReadByUser = false;
     await b.save();
+    // Email the seeker
+    const [seekerDoc, propDoc] = await Promise.all([
+      User.findById(b.user).select("email name").lean(),
+      Property.findById(b.property).select("title").lean(),
+    ]);
+    if (seekerDoc?.email) {
+      fireEmail(sendBookingStatusEmail, seekerDoc.email, {
+        bookingType: b.type, status: "approved", propertyTitle: propDoc?.title || "your property", seekerName: seekerDoc.name,
+      });
+    }
     return res.json(b);
   } catch (err) {
     console.error("approveBooking err", err);
@@ -219,11 +243,20 @@ exports.rejectBooking = async (req, res) => {
     if (b.owner.toString() !== req.user._id.toString()) return res.status(403).json({ message: "Not allowed" });
 
     b.status = "rejected";
-    if (req.body?.reason) {
-      b.message = [b.message, `Owner note: ${req.body.reason}`].filter(Boolean).join("\n\n");
-    }
+    const reason = req.body?.reason || "";
+    if (reason) b.message = [b.message, `Owner note: ${reason}`].filter(Boolean).join("\n\n");
     b.isReadByUser = false;
     await b.save();
+    // Email the seeker
+    const [seekerDoc, propDoc] = await Promise.all([
+      User.findById(b.user).select("email name").lean(),
+      Property.findById(b.property).select("title").lean(),
+    ]);
+    if (seekerDoc?.email) {
+      fireEmail(sendBookingStatusEmail, seekerDoc.email, {
+        bookingType: b.type, status: "rejected", propertyTitle: propDoc?.title || "your property", reason, seekerName: seekerDoc.name,
+      });
+    }
     return res.json(b);
   } catch (err) {
     console.error("rejectBooking err", err);
@@ -260,6 +293,17 @@ exports.rescheduleBooking = async (req, res) => {
     b.reschedule = { date: day, slot, reason: reason || "" };
     b.isReadByUser = false;
     await b.save();
+    // Email the seeker
+    const [seekerDoc, propDoc] = await Promise.all([
+      User.findById(b.user).select("email name").lean(),
+      Property.findById(b.property).select("title").lean(),
+    ]);
+    if (seekerDoc?.email) {
+      fireEmail(sendBookingStatusEmail, seekerDoc.email, {
+        bookingType: "visit", status: "rescheduled", propertyTitle: propDoc?.title || "your property",
+        reason: `New time: ${slot} on ${day.toDateString()}`, seekerName: seekerDoc.name,
+      });
+    }
     return res.json(b);
   } catch (err) {
     console.error("rescheduleBooking err", err);

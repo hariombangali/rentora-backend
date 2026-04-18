@@ -5,7 +5,7 @@ const Property = require("../models/Property");
 // Add property to wishlist
 exports.addToWishlist = async (req, res) => {
   try {
-    const userId = req.user.id; // from auth middleware
+    const userId = req.user._id; // from auth middleware
     const propertyId = req.params.id;
 
     // Check if property exists
@@ -28,7 +28,7 @@ exports.addToWishlist = async (req, res) => {
 // Remove property from wishlist
 exports.removeFromWishlist = async (req, res) => {
   try {
-    const userId = req.user.id;
+    const userId = req.user._id;
     const propertyId = req.params.id;
 
     const user = await User.findById(userId);
@@ -46,7 +46,7 @@ exports.removeFromWishlist = async (req, res) => {
 // Get user's wishlist
 exports.getWishlist = async (req, res) => {
   try {
-    const userId = req.user.id;
+    const userId = req.user._id;
     const user = await User.findById(userId).populate("wishlist");
 
     res.json(user.wishlist);

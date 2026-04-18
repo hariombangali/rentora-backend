@@ -1,6 +1,7 @@
 const User = require('../models/User');
 const bcrypt = require('bcryptjs');
 const generateToken = require('../utils/generateToken');
+const { sendOtpEmail } = require('../utils/sendEmail');
 
 // OTP memory store (production me Redis use karte hain)
 const otpStore = {};
@@ -85,45 +86,48 @@ exports.upgradeUserRole = async (req, res) => {
   }
 };
 
+
 exports.sendOtp = async (req, res) => {
   const { email } = req.body;
   if (!email) return res.status(400).json({ message: "Email is required" });
 
   try {
     const user = await User.findOne({ email });
-    // 6-digit random OTP
-const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
 
+    otpStore[email] = { otp, expiresAt: Date.now() + 10 * 60 * 1000 };
 
-    otpStore[email] = otp; // save in-memory
+    await sendOtpEmail(email, otp);
 
-    console.log(`OTP for ${email}: ${otp}`); // testing ke liye console me print
     return res.status(200).json({
       success: true,
-      message: "OTP sent successfully (dummy)",
-      otp, // ✅ testing ke liye frontend ko OTP bhej rahe (production me mat bhejna)
+      message: "OTP sent successfully",
       isNewUser: !user,
     });
   } catch (err) {
-    res.status(500).json({ message: "Error generating OTP" });
+    console.error("sendOtp error:", err.message);
+    res.status(500).json({ message: "Failed to send OTP. Check email configuration." });
   }
 };
 
-// @desc Verify OTP
-// @route POST /auth/verify-otp
+
 exports.verifyOtp = async (req, res) => {
   const { email, otp } = req.body;
   if (!email || !otp) return res.status(400).json({ message: "Email and OTP required" });
 
   try {
-    if (otpStore[email] !== otp) {
+    const record = otpStore[email];
+    if (!record || record.otp !== otp) {
       return res.status(400).json({ message: "Invalid OTP" });
+    }
+    if (Date.now() > record.expiresAt) {
+      delete otpStore[email];
+      return res.status(400).json({ message: "OTP has expired. Please request a new one." });
     }
 
     const user = await User.findOne({ email });
 
     if (user) {
-      // ✅ old user → login directly
       delete otpStore[email];
       return res.status(200).json({
         _id: user._id,
@@ -146,8 +150,7 @@ exports.verifyOtp = async (req, res) => {
   }
 };
 
-// @desc Set password after OTP verify (new user)
-// @route POST /auth/set-password
+
 exports.setPassword = async (req, res) => {
   const { email, name, password } = req.body;
   if (!email || !password)

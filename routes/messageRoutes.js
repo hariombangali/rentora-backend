@@ -5,6 +5,7 @@ const {
   sendMessage,
   getConversations,
   getMessagesByUser,
+  markMessagesRead,
   getConversationsCount,
 } = require("../controllers/messageController");
 const { protect } = require("../middlewares/authMiddleware"); // ensure folder is 'middleware'
@@ -17,6 +18,7 @@ router.get("/conversations", protect, getConversations);
 // Keep count BEFORE param route to avoid shadowing
 router.get("/conversations/count", protect, getConversationsCount);
 
+router.patch("/read", protect, markMessagesRead);
 // Property-scoped history: /messages/:partnerId?propertyId=...
 router.get("/:partnerId", protect, getMessagesByUser);
 

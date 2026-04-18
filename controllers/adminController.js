@@ -3,16 +3,22 @@ const User = require('../models/User');
 
 exports.getAllPendingProperties = async (req, res) => {
   try {
-    const pending = await Property.find({ approved: false, rejected: { $ne: true } }).populate({
-      path: 'user',
-      match: { ownerVerified: true },  // only verified owners
-      select: 'ownerKYC ownerVerified', // jo fields chahiye wo lelo
-    });
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.min(50, parseInt(req.query.limit) || 20);
 
-    // Properties jinka user populate nahi hua (ownerVerified false) unhe filter karo
-    const filteredPending = pending.filter(p => p.user != null);
+    const baseQuery = { approved: false, rejected: { $ne: true } };
+    const [pending, total] = await Promise.all([
+      Property.find(baseQuery)
+        .sort({ createdAt: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .populate({ path: 'user', match: { ownerVerified: true }, select: 'ownerKYC ownerVerified' })
+        .lean(),
+      Property.countDocuments(baseQuery),
+    ]);
 
-    res.json(filteredPending);
+    const filtered = pending.filter(p => p.user != null);
+    res.json({ properties: filtered, total, page, pages: Math.ceil(total / limit) });
   } catch (err) {
     res.status(500).json({ message: "Error fetching pending properties" });
   }
@@ -34,9 +40,29 @@ exports.approveProperty = async (req, res) => {
 
 exports.getAllProperties = async (req, res) => {
   try {
-    const properties = await Property.find({})
-      .populate('user', 'name email ownerKYC ownershipProof ownerVerified ownerRejected ownerRole'); // Select fields needed
-    res.json(properties);
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.min(50, parseInt(req.query.limit) || 20);
+    const { search, status } = req.query;
+
+    const filter = {};
+    if (search) {
+      const rx = new RegExp(search.trim().slice(0, 100), "i");
+      filter.$or = [{ title: { $regex: rx } }, { "location.city": { $regex: rx } }, { "location.locality": { $regex: rx } }];
+    }
+    if (status === "approved") { filter.approved = true; filter.rejected = false; }
+    else if (status === "rejected") { filter.rejected = true; }
+    else if (status === "pending") { filter.approved = false; filter.rejected = { $ne: true }; }
+
+    const [properties, total] = await Promise.all([
+      Property.find(filter)
+        .sort({ createdAt: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .populate('user', 'name email ownerKYC ownerVerified ownerRejected')
+        .lean(),
+      Property.countDocuments(filter),
+    ]);
+    res.json({ properties, total, page, pages: Math.ceil(total / limit) });
   } catch (err) {
     res.status(500).json({ message: "Error fetching properties", error: err.message });
   }
@@ -44,13 +70,27 @@ exports.getAllProperties = async (req, res) => {
 
 exports.getDashboardStats = async (req, res) => {
   try {
-    // Count all types
-    const totalProperties = await Property.countDocuments();
-    const pendingProps = await Property.countDocuments({ approved: false });
-    const owners = await User.countDocuments({ role: "owner" });
-    const users = await User.countDocuments({ role: "user" });
+    const [
+      totalProperties,
+      pendingApprovals,
+      owners,
+      users,
+      depositAgg,
+      availableProperties,
+      ownersPendingKYC,
+    ] = await Promise.all([
+      Property.countDocuments(),
+      Property.countDocuments({ approved: false, rejected: { $ne: true } }),
+      User.countDocuments({ role: "owner" }),
+      User.countDocuments({ role: "user" }),
+      Property.aggregate([{ $match: { approved: true } }, { $group: { _id: null, total: { $sum: "$deposit" } } }]),
+      Property.countDocuments({ approved: true, active: { $ne: false } }),
+      User.countDocuments({ role: "owner", ownerVerified: { $ne: true } }),
+    ]);
 
-    res.json({ totalProperties, pendingProps, owners, users });
+    const totalDeposit = depositAgg[0]?.total || 0;
+
+    res.json({ totalProperties, pendingApprovals, owners, users, totalDeposit, availableProperties, ownersPendingKYC });
   } catch (err) {
     res.status(500).json({ message: "Error fetching dashboard stats" });
   }
@@ -91,10 +131,25 @@ exports.getOwnerVerification = async (req, res) => {
 
 exports.getOwnersList = async (req, res) => {
   try {
-    // Optionally check req.query.status = 'pending' | 'verified' | 'rejected'
-    // For now, returning all owners
-    const owners = await User.find({ role: "owner" }).select("name ownerVerified ownerRejected ownerRejectionReason ownerKYC.email");
-    res.json(owners);
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.min(50, parseInt(req.query.limit) || 20);
+    const { status } = req.query;
+
+    const filter = { role: "owner" };
+    if (status === "verified") filter.ownerVerified = true;
+    else if (status === "pending") { filter.ownerVerified = false; filter.ownerRejected = { $ne: true }; }
+    else if (status === "rejected") filter.ownerRejected = true;
+
+    const [owners, total] = await Promise.all([
+      User.find(filter)
+        .sort({ createdAt: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .select("name ownerVerified ownerRejected ownerRejectionReason ownerKYC")
+        .lean(),
+      User.countDocuments(filter),
+    ]);
+    res.json({ owners, total, page, pages: Math.ceil(total / limit) });
   } catch (err) {
     res.status(500).json({ message: "Failed to fetch owners list" });
   }

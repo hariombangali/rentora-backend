@@ -30,10 +30,6 @@ const geocodeWithOpenCage = async (address) => {
 exports.postProperty = async (req, res) => {
   try {
 
-    console.log("REQ.USER:", req.user);
-    console.log("REQ.BODY:", req.body);
-    console.log("REQ.FILES:", req.files);
-
     const userId = req.user._id;
     const user = await User.findById(userId);
     if (!user) return res.status(404).json({ message: "User not found" });
@@ -105,8 +101,14 @@ exports.postProperty = async (req, res) => {
 
 exports.getAllProperties = async (req, res) => {
   try {
-    const properties = await Property.find({ approved: true });
-    res.json(properties);
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.min(50, parseInt(req.query.limit) || 20);
+    const query = { approved: true, active: { $ne: false } };
+    const [properties, total] = await Promise.all([
+      Property.find(query).sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit).lean(),
+      Property.countDocuments(query),
+    ]);
+    res.json({ properties, total, page, pages: Math.ceil(total / limit) });
   } catch (error) {
     res.status(500).json({ message: "Failed to fetch properties", error: error.message });
   }
@@ -197,6 +199,7 @@ exports.getFeaturedProperties = async (req, res, next) => {
         .lean();
     }
 
+    res.set('Cache-Control', 'public, max-age=300');
     res.json(properties);
   } catch (err) {
     next(err);
@@ -211,6 +214,7 @@ exports.getLatestProperties = async (req, res, next) => {
       .limit(limit)
       .select("title price images location.point coordinates")
       .lean();
+    res.set('Cache-Control', 'public, max-age=300');
     res.json(properties);
   } catch (err) {
     next(err);
@@ -340,27 +344,25 @@ exports.toggleActive = async (req, res) => {
 
 exports.searchProperties = async (req, res) => {
   try {
-    const raw = (req.query.search || req.query.query || "").trim();
+    const raw = (req.query.search || req.query.query || "").trim().slice(0, 200);
     const tokens = raw.match(/"([^"]+)"|(\S+)/g)?.map(t => t.replace(/^"|"$/g, "")) || [];
     if (!tokens.length) return res.json([]);
 
-    // Query both nested and root fields
-    const fields = [
-      "title",
-      "location.city", "city",          // support both
-      "location.locality", "locality",
-      "location.address", "address",
-      "project"
-    ]; // [1][2]
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.min(50, parseInt(req.query.limit) || 20);
 
+    const fields = ["title", "location.city", "city", "location.locality", "locality", "location.address", "address"];
     const andClauses = tokens.map(tok => {
-      const rx = new RegExp(`\\b${escapeRegex(tok)}`, "i"); // word-anchored [4]
-      return { $or: fields.map(f => ({ [f]: { $regex: rx } })) }; // [2]
+      const rx = new RegExp(`\\b${escapeRegex(tok)}`, "i");
+      return { $or: fields.map(f => ({ [f]: { $regex: rx } })) };
     });
 
-    const query = { approved: true, $and: andClauses };
-    const properties = await Property.find(query).limit(50);
-    return res.json(properties);
+    const query = { approved: true, active: { $ne: false }, $and: andClauses };
+    const [properties, total] = await Promise.all([
+      Property.find(query).sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit).lean(),
+      Property.countDocuments(query),
+    ]);
+    return res.json({ properties, total, page, pages: Math.ceil(total / limit) });
   } catch (error) {
     console.error("Error searching properties:", error);
     res.status(500).json({ message: "Server error" });
@@ -371,45 +373,39 @@ exports.searchProperties = async (req, res) => {
 exports.getFilteredProperties = async (req, res) => {
   try {
     const { area, occupancyType, minRent, maxRent, approved } = req.query;
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.min(50, parseInt(req.query.limit) || 20);
 
     const and = [];
 
-    // Approved default true
-    if (typeof approved !== "undefined") {
-      and.push({ approved: approved === "true" });
-    } else {
-      and.push({ approved: true });
-    } // [3]
+    and.push(typeof approved !== "undefined" ? { approved: approved === "true" } : { approved: true });
+    and.push({ active: { $ne: false } });
 
-    // Area across city/locality (nested + root)
     if (area && area.trim()) {
       const rx = new RegExp(escapeRegex(area.trim()), "i");
       and.push({
         $or: [
           { "location.city": { $regex: rx } },
           { "location.locality": { $regex: rx } },
-          { city: { $regex: rx } },
-          { locality: { $regex: rx } },
         ],
       });
-    } // [1][2]
+    }
 
-    // Occupancy type
-    if (occupancyType) {
-      and.push({ occupancyType });
-    } // [5]
+    if (occupancyType) and.push({ occupancyType });
 
-    // Rent
     if (minRent || maxRent) {
       const price = {};
       if (minRent) price.$gte = Number(minRent);
       if (maxRent) price.$lte = Number(maxRent);
       and.push({ price });
-    } // [5]
+    }
 
-    const query = and.length ? { $and: and } : {};
-    const properties = await Property.find(query).limit(50);
-    return res.json(properties);
+    const query = { $and: and };
+    const [properties, total] = await Promise.all([
+      Property.find(query).sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit).lean(),
+      Property.countDocuments(query),
+    ]);
+    return res.json({ properties, total, page, pages: Math.ceil(total / limit) });
   } catch (error) {
     console.error("Error fetching filtered properties:", error);
     res.status(500).json({ message: "Server error" });

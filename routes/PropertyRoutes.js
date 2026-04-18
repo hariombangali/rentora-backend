@@ -36,14 +36,20 @@ router.post(
   postProperty
 );
 
+// Named GET routes — must appear before /:id to avoid shadowing
 router.get("/map-locations", getMapLocations);
-router.get("/", getAllProperties);
+router.get("/featured", getFeaturedProperties);
+router.get("/latest", getLatestProperties);
+router.get("/search", searchProperties);
 router.get(
   "/my-properties",
   protect,
   roleMiddleware("owner"),
   getMyProperties
 );
+// GET / handles both "all" and filtered (via query params)
+router.get("/", getFilteredProperties);
+router.get("/:id", getPropertyById);
 
 router.put(
   "/:id",
@@ -52,14 +58,8 @@ router.put(
   upload.fields([{ name: "images", maxCount: 8 }]),
   updateProperty
 );
-
 router.delete("/:id", protect, roleMiddleware("owner"), softDeleteProperty);
 router.put("/:id/toggle", protect, roleMiddleware("owner"), toggleActive);
-router.get("/featured", getFeaturedProperties);
-router.get("/latest", getLatestProperties);
-router.get("/search", searchProperties);
-router.get("/", getFilteredProperties);
-router.get("/:id", getPropertyById);
 
 
 module.exports = router;
