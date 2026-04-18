@@ -105,8 +105,8 @@ exports.sendOtp = async (req, res) => {
       isNewUser: !user,
     });
   } catch (err) {
-    console.error("sendOtp error:", err.message);
-    res.status(500).json({ message: "Failed to send OTP. Check email configuration." });
+    console.error("sendOtp error:", err.message, err.code || "");
+    res.status(500).json({ message: "Failed to send OTP. Check email configuration.", detail: err.message });
   }
 };
 

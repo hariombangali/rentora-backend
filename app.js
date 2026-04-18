@@ -1,7 +1,8 @@
+require('dotenv').config();
+
 const http = require('http');
 const express = require('express');
 const cors = require('cors');
-const dotenv = require('dotenv');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const compression = require('compression');
@@ -12,8 +13,6 @@ const messageRoutes = require("./routes/messageRoutes");
 const bookingRoutes = require("./routes/bookingRoutes");
 const wishlistRoutes = require("./routes/wishlistRoutes");
 const { initSocket } = require('./socket');
-
-dotenv.config();
 const app = express();
 
 connectDB();

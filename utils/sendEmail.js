@@ -1,6 +1,6 @@
 const nodemailer = require('nodemailer');
 
-const transporter = nodemailer.createTransport({
+const getTransporter = () => nodemailer.createTransport({
   service: 'gmail',
   auth: {
     user: process.env.EMAIL_USER,
@@ -13,7 +13,7 @@ const headerStyle = `background:#1e40af;color:#fff;padding:20px 32px;border-radi
 const bodyStyle = `background:#fff;padding:24px 32px;border-radius:0 0 10px 10px;border:1px solid #e2e8f0;border-top:none;`;
 
 const sendOtpEmail = async (to, otp) => {
-  await transporter.sendMail({
+  await getTransporter().sendMail({
     from: `"Room4Rent" <${process.env.EMAIL_USER}>`,
     to,
     subject: 'Your Room4Rent OTP Code',
@@ -43,7 +43,7 @@ const sendBookingStatusEmail = async (to, { bookingType, status, propertyTitle, 
     cancelled: `Your ${bookingType} has been cancelled`,
   };
 
-  await transporter.sendMail({
+  await getTransporter().sendMail({
     from: `"Room4Rent" <${process.env.EMAIL_USER}>`,
     to,
     subject: subjectMap[status] || `Booking update — ${propertyTitle}`,
@@ -64,7 +64,7 @@ const sendBookingStatusEmail = async (to, { bookingType, status, propertyTitle, 
 };
 
 const sendNewBookingEmail = async (to, { bookingType, propertyTitle, seekerName }) => {
-  await transporter.sendMail({
+  await getTransporter().sendMail({
     from: `"Room4Rent" <${process.env.EMAIL_USER}>`,
     to,
     subject: `New ${bookingType} request for ${propertyTitle}`,
