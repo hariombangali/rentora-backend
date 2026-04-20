@@ -82,6 +82,7 @@ app.use('/api/testimonials', testimonialRoutes);
 app.use("/api/messages", messageRoutes);
 app.use("/api", bookingRoutes);
 app.use("/api/wishlist", wishlistRoutes);
+app.use("/api/applications", require("./routes/applicationRoutes"));
 
 // Error handler
 app.use(errorHandler);

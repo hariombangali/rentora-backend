@@ -116,9 +116,13 @@ exports.getAllProperties = async (req, res) => {
 
 exports.getPropertyById = async (req, res) => {
   try {
-    const property = await Property.findOne({ _id: req.params.id, approved: true }).populate(
+    const property = await Property.findOneAndUpdate(
+      { _id: req.params.id, approved: true },
+      { $inc: { views: 1 } },
+      { new: true }
+    ).populate(
       "user",
-      "ownerKYC.ownerName ownerKYC.ownerEmail ownerKYC.ownerPhone"
+      "ownerKYC.ownerName ownerKYC.ownerEmail ownerKYC.ownerPhone name createdAt ownerVerified"
     );
 
     if (!property) return res.status(404).json({ message: "Property not found or not approved" });
@@ -127,6 +131,70 @@ exports.getPropertyById = async (req, res) => {
   } catch (error) {
     console.error("Error fetching property by id:", error);
     res.status(500).json({ message: "Server error" });
+  }
+};
+
+// GET /api/properties/:id/similar
+exports.getSimilarProperties = async (req, res) => {
+  try {
+    const base = await Property.findOne({ _id: req.params.id, approved: true })
+      .select("price bedrooms location")
+      .lean();
+    if (!base) return res.status(404).json({ message: "Property not found" });
+
+    const locality = base.location?.locality;
+    const basePrice = Number(base.price) || 0;
+    const minP = Math.floor(basePrice * 0.6);
+    const maxP = Math.ceil(basePrice * 1.5);
+
+    const common = {
+      _id: { $ne: base._id },
+      approved: true,
+      rejected: false,
+      active: { $ne: false },
+    };
+
+    // 1) Same locality
+    let list = locality
+      ? await Property.find({ ...common, "location.locality": locality })
+          .sort({ featured: -1, createdAt: -1 })
+          .limit(6)
+          .lean()
+      : [];
+
+    // 2) Fallback: similar price band + same bedrooms
+    if (list.length < 4) {
+      const ids = list.map((p) => p._id);
+      const extra = await Property.find({
+        ...common,
+        _id: { $nin: [base._id, ...ids] },
+        price: { $gte: minP, $lte: maxP },
+        ...(base.bedrooms ? { bedrooms: base.bedrooms } : {}),
+      })
+        .sort({ featured: -1, createdAt: -1 })
+        .limit(6 - list.length)
+        .lean();
+      list = [...list, ...extra];
+    }
+
+    // 3) Final fallback: newest approved
+    if (list.length < 4) {
+      const ids = list.map((p) => p._id);
+      const extra = await Property.find({
+        ...common,
+        _id: { $nin: [base._id, ...ids] },
+      })
+        .sort({ createdAt: -1 })
+        .limit(6 - list.length)
+        .lean();
+      list = [...list, ...extra];
+    }
+
+    res.set("Cache-Control", "public, max-age=300");
+    res.json(list.slice(0, 6));
+  } catch (err) {
+    console.error("getSimilarProperties:", err);
+    res.status(500).json({ message: "Failed to fetch similar properties" });
   }
 };
 

@@ -63,6 +63,9 @@ location: {
   featured: { type: Boolean, default: false },
    active: { type: Boolean, default: true },
 
+  // Analytics
+  views: { type: Number, default: 0 },
+
 }, { timestamps: true });
 
 propertySchema.index({ user: 1 });

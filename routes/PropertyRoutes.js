@@ -12,6 +12,7 @@ const {
   toggleActive,
   searchProperties,
   getFilteredProperties,
+  getSimilarProperties,
 } = require("../controllers/PropertyController");
 
 const { protect } = require("../middlewares/authMiddleware");
@@ -49,6 +50,7 @@ router.get(
 );
 // GET / handles both "all" and filtered (via query params)
 router.get("/", getFilteredProperties);
+router.get("/:id/similar", getSimilarProperties);
 router.get("/:id", getPropertyById);
 
 router.put(
