@@ -2,6 +2,7 @@ const Message = require("../models/Message");
 const User = require("../models/User");
 const Property = require("../models/Property");
 const { getIO, getRoomKey } = require("../socket");
+const { notify } = require("../utils/notify");
 
 const sendMessage = async (req, res) => {
   try {
@@ -32,6 +33,19 @@ const sendMessage = async (req, res) => {
       const room = getRoomKey(req.user._id, receiverId, propertyId);
       io.to(room).emit("receive_message", populatedMessage);
     }
+
+    // Create a notification for the receiver
+    const preview = content.trim().length > 90 ? content.trim().slice(0, 87) + "…" : content.trim();
+    notify({
+      user: receiverId,
+      kind: "message_new",
+      title: `New message from ${req.user.name || "someone"}`,
+      body: preview,
+      link: "/inbox",
+      refId: populatedMessage._id,
+      refType: "Message",
+      meta: { senderName: req.user.name, propertyTitle: populatedMessage.property?.title },
+    });
 
     return res.status(201).json(populatedMessage);
   } catch (error) {

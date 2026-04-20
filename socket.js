@@ -1,4 +1,5 @@
 const { Server } = require("socket.io");
+const jwt = require("jsonwebtoken");
 
 let io;
 
@@ -14,14 +15,38 @@ function initSocket(server) {
     },
   });
 
+  // Soft auth: if a valid JWT is provided, auto-join the user's personal room.
+  // Messaging/typing events still work without auth for backward compatibility.
+  io.use((socket, next) => {
+    try {
+      const token = socket.handshake?.auth?.token;
+      if (token && process.env.JWT_SECRET) {
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        if (decoded?.id) {
+          socket.data.userId = String(decoded.id);
+        }
+      }
+    } catch (e) { /* invalid token — continue unauth'd */ }
+    next();
+  });
+
   io.on("connection", (socket) => {
-    // Join a conversation room
+    // Auto-join personal room for notifications
+    if (socket.data.userId) {
+      socket.join(`user_${socket.data.userId}`);
+    }
+
+    // Explicit join (fallback if token parsing failed client-side)
+    socket.on("auth:join", ({ userId }) => {
+      if (userId) socket.join(`user_${String(userId)}`);
+    });
+
+    // Conversation rooms (existing messaging)
     socket.on("join_room", ({ senderId, receiverId, propertyId }) => {
       const room = getRoomKey(senderId, receiverId, propertyId);
       socket.join(room);
     });
 
-    // Typing indicators
     socket.on("typing", ({ senderId, receiverId, propertyId }) => {
       const room = getRoomKey(senderId, receiverId, propertyId);
       socket.to(room).emit("user_typing", { senderId });

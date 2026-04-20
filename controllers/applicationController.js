@@ -3,6 +3,7 @@ const Property = require("../models/Property");
 const User = require("../models/User");
 const Booking = require("../models/Booking");
 const { sendNewBookingEmail, sendBookingStatusEmail } = require("../utils/sendEmail");
+const { notify } = require("../utils/notify");
 
 // Fire-and-forget email
 const fireEmail = (fn, ...args) => fn(...args).catch((e) => console.error("Email send failed:", e.message));
@@ -73,7 +74,7 @@ exports.createApplication = async (req, res) => {
       aboutMe: aboutMe || "",
     });
 
-    // Notify owner
+    // Notify owner — email + in-app
     const owner = await User.findById(property.user).select("email name").lean();
     if (owner?.email) {
       fireEmail(sendNewBookingEmail, owner.email, {
@@ -82,6 +83,16 @@ exports.createApplication = async (req, res) => {
         seekerName: name || req.user.name,
       });
     }
+    notify({
+      user: property.user,
+      kind: "application_new",
+      title: `New rental application`,
+      body: `${name || req.user.name} applied for ${property.title}`,
+      link: "/owner/applications",
+      refId: app._id,
+      refType: "Application",
+      meta: { propertyTitle: property.title, applicantName: name || req.user.name },
+    });
 
     res.status(201).json(app);
   } catch (err) {
@@ -215,7 +226,7 @@ exports.updateApplicationStatus = async (req, res) => {
 
     await app.save();
 
-    // Notify applicant of decision
+    // Notify applicant of decision — email + in-app
     if (app.user?.email && ["approved", "rejected"].includes(status)) {
       fireEmail(sendBookingStatusEmail, app.user.email, {
         bookingType: "rental application",
@@ -225,6 +236,24 @@ exports.updateApplicationStatus = async (req, res) => {
         seekerName: app.user.name,
       });
     }
+    notify({
+      user: app.user._id || app.user,
+      kind: "application_status",
+      title:
+        status === "approved" ? `Application approved! 🎉`
+        : status === "rejected" ? `Application update`
+        : `Application is being reviewed`,
+      body:
+        status === "approved"
+          ? `Your application for ${app.property?.title || "the home"} is approved. Check the rental in your bookings.`
+          : status === "rejected"
+          ? `Your application for ${app.property?.title || "the home"} wasn't selected this time.`
+          : `The owner is reviewing your application for ${app.property?.title || "the home"}.`,
+      link: status === "approved" ? "/my-bookings" : "/my-bookings",
+      refId: app._id,
+      refType: "Application",
+      meta: { propertyTitle: app.property?.title, status, ownerNote: ownerNote || "" },
+    });
 
     res.json(app);
   } catch (err) {
@@ -250,7 +279,7 @@ exports.withdrawApplication = async (req, res) => {
     app.decidedAt = new Date();
     await app.save();
 
-    // Notify owner
+    // Notify owner — email + in-app
     if (app.owner?.email) {
       fireEmail(sendBookingStatusEmail, app.owner.email, {
         bookingType: "rental application",
@@ -260,6 +289,15 @@ exports.withdrawApplication = async (req, res) => {
         seekerName: app.owner.name,
       });
     }
+    notify({
+      user: app.owner._id || app.owner,
+      kind: "application_withdrawn",
+      title: "Application withdrawn",
+      body: `${req.user.name || "An applicant"} withdrew their application for ${app.property?.title || "the home"}.`,
+      link: "/owner/applications",
+      refId: app._id,
+      refType: "Application",
+    });
 
     res.json(app);
   } catch (err) {

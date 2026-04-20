@@ -3,6 +3,7 @@ const Booking = require("../models/Booking");
 const Property = require("../models/Property");
 const User = require("../models/User");
 const { sendBookingStatusEmail, sendNewBookingEmail } = require("../utils/sendEmail");
+const { notify } = require("../utils/notify");
 
 const DEFAULT_SLOTS = ["10:00 AM", "12:00 PM", "3:00 PM", "6:00 PM"];
 const MAX_PER_SLOT = 1;
@@ -85,6 +86,16 @@ exports.createBooking = async (req, res) => {
       if (ownerDoc?.email) {
         fireEmail(sendNewBookingEmail, ownerDoc.email, { bookingType: "enquiry", propertyTitle: property.title, seekerName: req.user.name });
       }
+      notify({
+        user: property.user,
+        kind: "booking_new",
+        title: "New enquiry",
+        body: `${req.user.name} sent an enquiry about ${property.title}`,
+        link: "/owner/bookings",
+        refId: booking._id,
+        refType: "Booking",
+        meta: { propertyTitle: property.title, bookingType: "lead" },
+      });
       return res.status(201).json({ booking, message: "Lead created" });
     }
 
@@ -115,6 +126,16 @@ exports.createBooking = async (req, res) => {
       if (ownerDoc?.email) {
         fireEmail(sendNewBookingEmail, ownerDoc.email, { bookingType: "visit", propertyTitle: property.title, seekerName: req.user.name });
       }
+      notify({
+        user: property.user,
+        kind: "booking_new",
+        title: "New visit request",
+        body: `${req.user.name} wants to visit ${property.title} on ${day.toDateString()} at ${vSlot}`,
+        link: "/owner/bookings",
+        refId: booking._id,
+        refType: "Booking",
+        meta: { propertyTitle: property.title, bookingType: "visit", visitDate: day, visitSlot: vSlot },
+      });
       return res.status(201).json({ booking, message: "Visit requested" });
     }
 
@@ -228,6 +249,16 @@ exports.approveBooking = async (req, res) => {
         bookingType: b.type, status: "approved", propertyTitle: propDoc?.title || "your property", seekerName: seekerDoc.name,
       });
     }
+    notify({
+      user: b.user,
+      kind: "booking_status",
+      title: `${b.type === "visit" ? "Visit" : b.type === "rental" ? "Rental" : "Request"} approved`,
+      body: `Your ${b.type} request for ${propDoc?.title || "the home"} is approved.`,
+      link: "/my-bookings",
+      refId: b._id,
+      refType: "Booking",
+      meta: { status: "approved", bookingType: b.type, propertyTitle: propDoc?.title },
+    });
     return res.json(b);
   } catch (err) {
     console.error("approveBooking err", err);
@@ -257,6 +288,16 @@ exports.rejectBooking = async (req, res) => {
         bookingType: b.type, status: "rejected", propertyTitle: propDoc?.title || "your property", reason, seekerName: seekerDoc.name,
       });
     }
+    notify({
+      user: b.user,
+      kind: "booking_status",
+      title: `${b.type === "visit" ? "Visit" : b.type === "rental" ? "Rental" : "Request"} declined`,
+      body: `Your ${b.type} request for ${propDoc?.title || "the home"} wasn't approved${reason ? `: ${reason}` : "."}`,
+      link: "/my-bookings",
+      refId: b._id,
+      refType: "Booking",
+      meta: { status: "rejected", bookingType: b.type, propertyTitle: propDoc?.title, reason },
+    });
     return res.json(b);
   } catch (err) {
     console.error("rejectBooking err", err);
@@ -304,6 +345,16 @@ exports.rescheduleBooking = async (req, res) => {
         reason: `New time: ${slot} on ${day.toDateString()}`, seekerName: seekerDoc.name,
       });
     }
+    notify({
+      user: b.user,
+      kind: "booking_rescheduled",
+      title: "Visit rescheduled",
+      body: `Owner proposed ${slot} on ${day.toDateString()} for ${propDoc?.title || "the home"}.`,
+      link: "/my-bookings",
+      refId: b._id,
+      refType: "Booking",
+      meta: { newDate: day, newSlot: slot, reason, propertyTitle: propDoc?.title },
+    });
     return res.json(b);
   } catch (err) {
     console.error("rescheduleBooking err", err);
@@ -320,8 +371,22 @@ exports.cancelBooking = async (req, res) => {
     if (b.user.toString() !== uid && b.owner.toString() !== uid && req.user.role !== "admin") {
       return res.status(403).json({ message: "Not allowed" });
     }
+    const cancelledByOwner = b.owner.toString() === uid;
     b.status = "cancelled";
     await b.save();
+
+    // Notify the other party
+    const propDoc = await Property.findById(b.property).select("title").lean();
+    notify({
+      user: cancelledByOwner ? b.user : b.owner,
+      kind: "booking_status",
+      title: `${b.type === "visit" ? "Visit" : b.type === "rental" ? "Rental" : "Booking"} cancelled`,
+      body: `${cancelledByOwner ? "The owner" : (req.user.name || "The applicant")} cancelled the ${b.type} for ${propDoc?.title || "the home"}.`,
+      link: cancelledByOwner ? "/my-bookings" : "/owner/bookings",
+      refId: b._id,
+      refType: "Booking",
+      meta: { status: "cancelled", bookingType: b.type, propertyTitle: propDoc?.title },
+    });
     return res.json(b);
   } catch (err) {
     console.error("cancelBooking err", err);

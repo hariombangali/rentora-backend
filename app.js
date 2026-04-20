@@ -83,6 +83,7 @@ app.use("/api/messages", messageRoutes);
 app.use("/api", bookingRoutes);
 app.use("/api/wishlist", wishlistRoutes);
 app.use("/api/applications", require("./routes/applicationRoutes"));
+app.use("/api/notifications", require("./routes/notificationRoutes"));
 
 // Error handler
 app.use(errorHandler);
