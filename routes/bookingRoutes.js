@@ -14,6 +14,8 @@ router.get("/bookings/:id", protect, bookingCtrl.getBookingById);
 router.patch("/bookings/:id/approve", protect, bookingCtrl.approveBooking);
 router.patch("/bookings/:id/reject", protect, bookingCtrl.rejectBooking);
 router.patch("/bookings/:id/reschedule", protect, bookingCtrl.rescheduleBooking);
+router.patch("/bookings/:id/accept-reschedule", protect, bookingCtrl.acceptReschedule);
+router.patch("/bookings/:id/decline-reschedule", protect, bookingCtrl.declineReschedule);
 router.patch("/bookings/:id/cancel", protect, bookingCtrl.cancelBooking);
 
 // Aliases to match current frontend calls (PDP)

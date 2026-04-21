@@ -394,6 +394,77 @@ exports.cancelBooking = async (req, res) => {
   }
 };
 
+// PATCH /bookings/:id/accept-reschedule  (tenant)
+exports.acceptReschedule = async (req, res) => {
+  try {
+    const b = await Booking.findById(req.params.id);
+    if (!b) return res.status(404).json({ message: "Booking not found" });
+    if (b.user.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ message: "Only the tenant can accept a reschedule" });
+    }
+    if (b.status !== "rescheduled" || !b.reschedule?.date) {
+      return res.status(400).json({ message: "Nothing to accept" });
+    }
+
+    b.visitDate = normalizeDay(b.reschedule.date);
+    b.visitSlot = b.reschedule.slot;
+    b.status = "approved";
+    b.reschedule = undefined;
+    b.isReadByOwner = false;
+    await b.save();
+
+    const propDoc = await Property.findById(b.property).select("title").lean();
+    notify({
+      user: b.owner,
+      kind: "booking_status",
+      title: "Tenant accepted the new time",
+      body: `The visit at ${propDoc?.title || "the home"} is on for ${b.visitSlot} on ${b.visitDate.toDateString()}.`,
+      link: "/owner/bookings",
+      refId: b._id,
+      refType: "Booking",
+    });
+    return res.json(b);
+  } catch (err) {
+    console.error("acceptReschedule err", err);
+    return res.status(500).json({ message: "Server error" });
+  }
+};
+
+// PATCH /bookings/:id/decline-reschedule  (tenant)
+exports.declineReschedule = async (req, res) => {
+  try {
+    const b = await Booking.findById(req.params.id);
+    if (!b) return res.status(404).json({ message: "Booking not found" });
+    if (b.user.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ message: "Only the tenant can decline a reschedule" });
+    }
+    if (b.status !== "rescheduled") {
+      return res.status(400).json({ message: "Nothing to decline" });
+    }
+
+    // Revert to pending so owner can re-propose, or keep original visitDate as pending
+    b.status = "pending";
+    b.reschedule = undefined;
+    b.isReadByOwner = false;
+    await b.save();
+
+    const propDoc = await Property.findById(b.property).select("title").lean();
+    notify({
+      user: b.owner,
+      kind: "booking_status",
+      title: "Tenant declined the reschedule",
+      body: `The tenant prefers the original time for ${propDoc?.title || "the home"}. Reply to confirm or propose again.`,
+      link: "/owner/bookings",
+      refId: b._id,
+      refType: "Booking",
+    });
+    return res.json(b);
+  } catch (err) {
+    console.error("declineReschedule err", err);
+    return res.status(500).json({ message: "Server error" });
+  }
+};
+
 // GET /bookings/availability?propertyId&date=YYYY-MM-DD   (visit slots)
 exports.getVisitAvailability = async (req, res) => {
   try {

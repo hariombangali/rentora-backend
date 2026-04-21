@@ -84,6 +84,8 @@ app.use("/api", bookingRoutes);
 app.use("/api/wishlist", wishlistRoutes);
 app.use("/api/applications", require("./routes/applicationRoutes"));
 app.use("/api/notifications", require("./routes/notificationRoutes"));
+app.use("/api/rent-payments", require("./routes/rentPaymentRoutes"));
+app.use("/api/issues", require("./routes/maintenanceRoutes"));
 
 // Error handler
 app.use(errorHandler);
