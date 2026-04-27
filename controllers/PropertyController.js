@@ -226,7 +226,7 @@ exports.getMyProperties = async (req, res) => {
 exports.getMapLocations = async (req, res) => {
   try {
     const properties = await Property.find({ approved: true, "location.point": { $exists: true } }).select(
-      "_id title price location.point.coordinates images"
+      "_id title price location.point.coordinates location.locality location.city images"
     );
 
     res.json(
@@ -235,7 +235,11 @@ exports.getMapLocations = async (req, res) => {
         title: p.title,
         price: p.price,
         images: p.images,
-        location: { coordinates: p.location.point.coordinates },
+        location: {
+          coordinates: p.location.point.coordinates,
+          locality: p.location.locality,
+          city: p.location.city,
+        },
       }))
     );
   } catch (error) {

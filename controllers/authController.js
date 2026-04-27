@@ -21,7 +21,7 @@ exports.checkUserExists = async (req, res) => {
 
 // @desc Register new user
 exports.registerUser = async (req, res) => {
-  const { name, email, password } = req.body;
+  const { name, email, password, contact, role } = req.body;
   if (!name || !email || !password)
     return res.status(400).json({ message: 'All fields are required' });
 
@@ -30,7 +30,8 @@ exports.registerUser = async (req, res) => {
     if (userExists) return res.status(400).json({ message: 'User already exists' });
 
     const hashedPwd = await bcrypt.hash(password, 10);
-    const user = await User.create({ name, email, password: hashedPwd });
+    const accountRole = role === "owner" ? "owner" : "user";
+    const user = await User.create({ name, email, password: hashedPwd, contact, role: accountRole });
 
     return res.status(201).json({
       _id: user._id,

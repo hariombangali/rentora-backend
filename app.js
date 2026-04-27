@@ -86,6 +86,7 @@ app.use("/api/applications", require("./routes/applicationRoutes"));
 app.use("/api/notifications", require("./routes/notificationRoutes"));
 app.use("/api/rent-payments", require("./routes/rentPaymentRoutes"));
 app.use("/api/issues", require("./routes/maintenanceRoutes"));
+app.use("/api/user", require("./routes/userRoutes"));
 
 // Error handler
 app.use(errorHandler);
