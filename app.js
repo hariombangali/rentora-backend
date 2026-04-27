@@ -55,9 +55,12 @@ app.use(
 app.use(express.json({ limit: '1mb' }));
 
 // Rate limiting — strict on auth, lenient on general API
+// Disabled entirely in development so HMR / StrictMode / parallel fetches don't trigger 429s.
+const isProd = process.env.NODE_ENV === 'production';
+
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 10,
+  max: isProd ? 20 : 1000,
   message: { message: 'Too many requests from this IP, please try again later.' },
   standardHeaders: true,
   legacyHeaders: false,
@@ -65,9 +68,11 @@ const authLimiter = rateLimit({
 
 const generalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 200,
+  max: isProd ? 600 : 5000,
   standardHeaders: true,
   legacyHeaders: false,
+  // Don't count successful GETs as aggressively — most reads are safe to retry.
+  skipSuccessfulRequests: !isProd,
 });
 
 app.use('/api/auth', authLimiter);

@@ -27,11 +27,22 @@ const sendMessage = async (req, res) => {
       { path: "property", select: "title" },
     ]);
 
-    // Emit real-time event to the conversation room
+    // Emit real-time events
     const io = getIO();
     if (io) {
+      // 1. Conversation room — used when the receiver has this conversation OPEN
       const room = getRoomKey(req.user._id, receiverId, propertyId);
       io.to(room).emit("receive_message", populatedMessage);
+
+      // 2. Receiver's personal room — used to update the sidebar preview / unread badge
+      //    even when a different conversation is open.
+      io.to(`user_${String(receiverId)}`).emit("message:preview", {
+        partner: populatedMessage.sender,   // from the receiver's POV the partner = sender
+        property: populatedMessage.property || null,
+        lastMessage: populatedMessage.content,
+        updatedAt: populatedMessage.createdAt,
+        messageId: populatedMessage._id,
+      });
     }
 
     // Create a notification for the receiver
