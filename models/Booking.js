@@ -10,6 +10,30 @@ const rescheduleSchema = new mongoose.Schema(
   { _id: false }
 );
 
+// Move-in checklist — gates the rental from "approved" to "live".
+// All three steps must complete before the lease is considered active.
+const moveInSchema = new mongoose.Schema(
+  {
+    // Step 1 — deposit + first-month rent paid by tenant
+    paymentDone:    { type: Boolean, default: false },
+    paymentAmount:  { type: Number },
+    depositAmount:  { type: Number },   // snapshot of the deposit portion
+    firstRentAmount:{ type: Number },   // snapshot of the first-month rent portion
+    paymentMode:    { type: String },
+    paymentRef:     { type: String },
+    paymentAt:      { type: Date },
+
+    // Step 2 — both parties e-sign the agreement
+    tenantSignedAt: { type: Date, default: null },
+    ownerSignedAt:  { type: Date, default: null },
+
+    // Step 3 — both parties confirm the keys handed over / received
+    tenantConfirmedAt: { type: Date, default: null },
+    ownerConfirmedAt:  { type: Date, default: null },
+  },
+  { _id: false }
+);
+
 const bookingSchema = new mongoose.Schema(
   {
     // Parties
@@ -36,6 +60,10 @@ const bookingSchema = new mongoose.Schema(
     // Rental-only (long-term)
     checkIn: { type: Date },
     checkOut: { type: Date },      // optional
+
+    // Move-in flow (rental-only)
+    moveIn: { type: moveInSchema, default: () => ({}) },
+    moveInCompletedAt: { type: Date, default: null },
 
     // Commercials
     priceQuoted: { type: Number }, // snapshot (e.g., monthly rent)
