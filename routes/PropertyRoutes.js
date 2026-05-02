@@ -13,7 +13,7 @@ const {
   searchProperties,
   getFilteredProperties,
   getSimilarProperties,
-} = require("../controllers/propertyController");
+} = require("../controllers/PropertyController");
 
 const { protect } = require("../middlewares/authMiddleware");
 const roleMiddleware = require("../middlewares/roleMiddleware");
