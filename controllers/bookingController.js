@@ -4,6 +4,35 @@ const Property = require("../models/Property");
 const User = require("../models/User");
 const { sendBookingStatusEmail, sendNewBookingEmail } = require("../utils/sendEmail");
 const { notify } = require("../utils/notify");
+const { getIO } = require("../socket");
+
+function emitBookingUpdate(booking) {
+  try {
+    const io = getIO();
+    if (!io || !booking) return;
+    const tenantId = String(booking.user?._id || booking.user);
+    const ownerId  = String(booking.owner?._id || booking.owner);
+    if (tenantId) io.to(`user_${tenantId}`).emit("booking:updated", booking);
+    if (ownerId && ownerId !== tenantId) io.to(`user_${ownerId}`).emit("booking:updated", booking);
+  } catch (e) {
+    console.error("emitBookingUpdate failed:", e.message);
+  }
+}
+
+// Compute when a visit slot has ended (slot start + 30 min). Returns null if unparseable.
+function visitEndedAt(b) {
+  if (!b?.visitDate || !b?.visitSlot) return null;
+  const m = String(b.visitSlot).match(/(\d+):(\d+)\s*(AM|PM)?/i);
+  if (!m) return null;
+  let h = parseInt(m[1], 10);
+  const min = parseInt(m[2], 10);
+  const ampm = (m[3] || "").toUpperCase();
+  if (ampm === "PM" && h < 12) h += 12;
+  if (ampm === "AM" && h === 12) h = 0;
+  const d = new Date(b.visitDate);
+  d.setHours(h, min + 30, 0, 0);
+  return d;
+}
 
 const DEFAULT_SLOTS = ["10:00 AM", "12:00 PM", "3:00 PM", "6:00 PM"];
 const MAX_PER_SLOT = 1;
@@ -543,6 +572,118 @@ exports.createLeadAlias = async (req, res, next) => {
 exports.createVisitAlias = async (req, res, next) => {
   req.body.type = "visit";
   return exports.createBooking(req, res, next);
+};
+
+// POST /api/bookings/:id/visit-outcome  — tenant
+// body: { outcome: "applied"|"considering"|"passed"|"no_show", note? }
+exports.markVisitOutcome = async (req, res) => {
+  try {
+    const { outcome, note } = req.body || {};
+    const allowed = ["applied", "considering", "passed", "no_show"];
+    if (!allowed.includes(outcome)) {
+      return res.status(400).json({ message: "Invalid outcome" });
+    }
+
+    const booking = await Booking.findById(req.params.id).populate("property", "title");
+    if (!booking) return res.status(404).json({ message: "Booking not found" });
+    if (booking.type !== "visit") return res.status(400).json({ message: "Not a visit" });
+    if (String(booking.user) !== String(req.user._id)) {
+      return res.status(403).json({ message: "Only the tenant can mark the outcome" });
+    }
+    if (["cancelled", "rejected"].includes(booking.status)) {
+      return res.status(400).json({ message: "Visit was cancelled" });
+    }
+
+    booking.outcome = outcome;
+    booking.outcomeNote = (note || "").trim();
+    booking.status = "completed";
+    booking.completedAt = booking.completedAt || new Date();
+    await booking.save();
+
+    const titleMap = {
+      applied:      "Tenant wants to apply",
+      considering:  "Tenant is considering",
+      passed:       "Tenant passed on the home",
+      no_show:      "Tenant didn't visit",
+    };
+
+    notify({
+      user: booking.owner,
+      kind: "booking_status",
+      title: titleMap[outcome],
+      body: `${req.user.name || "Your visitor"} for ${booking.property?.title || "your property"}${note ? ` — ${note}` : ""}.`,
+      link: "/owner/bookings",
+      refId: booking._id,
+      refType: "Booking",
+      meta: { outcome, note },
+    });
+
+    const populated = await Booking.findById(booking._id)
+      .populate("property", "title location images price deposit user")
+      .populate("owner", "name email")
+      .populate("user", "name email")
+      .lean();
+    emitBookingUpdate(populated);
+    res.json(populated);
+  } catch (err) {
+    console.error("markVisitOutcome:", err);
+    res.status(500).json({ message: "Failed to mark outcome" });
+  }
+};
+
+// POST /api/bookings/:id/visit-attendance  — owner
+// body: { attended: "attended"|"no_show" }
+exports.markVisitAttendance = async (req, res) => {
+  try {
+    const { attended } = req.body || {};
+    if (!["attended", "no_show"].includes(attended)) {
+      return res.status(400).json({ message: "attended must be 'attended' or 'no_show'" });
+    }
+
+    const booking = await Booking.findById(req.params.id).populate("property", "title");
+    if (!booking) return res.status(404).json({ message: "Booking not found" });
+    if (booking.type !== "visit") return res.status(400).json({ message: "Not a visit" });
+    if (String(booking.owner) !== String(req.user._id)) {
+      return res.status(403).json({ message: "Only the owner can mark attendance" });
+    }
+    if (["cancelled", "rejected"].includes(booking.status)) {
+      return res.status(400).json({ message: "Visit was cancelled" });
+    }
+
+    booking.attendedByOwner = attended;
+    // If the tenant hasn't recorded their outcome yet, owner's mark closes the visit.
+    if (!booking.outcome) {
+      booking.status = "completed";
+      booking.completedAt = booking.completedAt || new Date();
+      // For a no-show, mirror it as the outcome so the visit is unambiguous.
+      if (attended === "no_show") booking.outcome = "no_show";
+    }
+    await booking.save();
+
+    notify({
+      user: booking.user,
+      kind: "booking_status",
+      title: attended === "attended" ? "Owner confirmed your visit" : "Owner marked you as no-show",
+      body: attended === "attended"
+        ? `Your visit to ${booking.property?.title || "the property"} is confirmed. Liked it?`
+        : `If this is wrong, drop the owner a note from your inbox.`,
+      link: "/my-bookings",
+      refId: booking._id,
+      refType: "Booking",
+      meta: { attended },
+    });
+
+    const populated = await Booking.findById(booking._id)
+      .populate("property", "title location images price deposit user")
+      .populate("owner", "name email")
+      .populate("user", "name email")
+      .lean();
+    emitBookingUpdate(populated);
+    res.json(populated);
+  } catch (err) {
+    console.error("markVisitAttendance:", err);
+    res.status(500).json({ message: "Failed to mark attendance" });
+  }
 };
 
 // Contacts: GET /contacts/quota?ownerId=...

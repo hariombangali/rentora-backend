@@ -57,6 +57,22 @@ const bookingSchema = new mongoose.Schema(
     visitSlot: { type: String },   // e.g., "10:00 AM"
     reschedule: { type: rescheduleSchema, default: undefined },
 
+    // Visit completion (visit-only)
+    // outcome captured by the tenant after the slot ends.
+    outcome: {
+      type: String,
+      enum: ["applied", "considering", "passed", "no_show", null],
+      default: null,
+    },
+    outcomeNote: { type: String, default: "" },
+    // owner's independent attendance mark
+    attendedByOwner: {
+      type: String,
+      enum: ["attended", "no_show", null],
+      default: null,
+    },
+    completedAt: { type: Date, default: null },
+
     // Rental-only (long-term)
     checkIn: { type: Date },
     checkOut: { type: Date },      // optional

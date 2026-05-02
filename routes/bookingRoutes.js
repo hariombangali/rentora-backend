@@ -18,6 +18,10 @@ router.patch("/bookings/:id/accept-reschedule", protect, bookingCtrl.acceptResch
 router.patch("/bookings/:id/decline-reschedule", protect, bookingCtrl.declineReschedule);
 router.patch("/bookings/:id/cancel", protect, bookingCtrl.cancelBooking);
 
+// Visit completion
+router.post("/bookings/:id/visit-outcome",    protect, bookingCtrl.markVisitOutcome);
+router.post("/bookings/:id/visit-attendance", protect, bookingCtrl.markVisitAttendance);
+
 // Aliases to match current frontend calls (PDP)
 router.post("/leads", protect, bookingCtrl.createLeadAlias);
 router.post("/visits", protect, bookingCtrl.createVisitAlias);
